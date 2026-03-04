@@ -1,0 +1,103 @@
+{
+  "projectType": "framework",
+  "projectName": "SwiftFusePHP",
+  "projectDescription": "An efficient and versatile PHP framework for seamless web development with modular MVC architecture",
+  "theme": "palm",
+  "primaryColor": "#3B82F6",
+  "lightColor": "#60A5FA",
+  "darkColor": "#1E40AF",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "architecture",
+              "routing",
+              "controllers",
+              "models",
+              "views"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "database",
+              "file-handling",
+              "security",
+              "error-handling",
+              "utilities"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "configuration",
+              "extending",
+              "best-practices"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Classes",
+            "pages": [
+              "api/core",
+              "api/controlador",
+              "api/model"
+            ]
+          },
+          {
+            "group": "Database",
+            "pages": [
+              "api/conexion"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/functions",
+              "api/file"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "MVC Architecture with modular design",
+    "URL routing system with clean URLs",
+    "PDO-based database layer with transaction support",
+    "File and image upload handling with compression",
+    "Security utilities including input filtering and validation",
+    "Custom error handling and logging",
+    "Helper functions for common web development tasks",
+    "SSL and HTTPS configuration support"
+  ],
+  "publicApiSurface": [
+    "Core - URL routing and controller mapping",
+    "Controlador - Base controller class with view/model loading",
+    "Model - Abstract model with database connection",
+    "Conexion - PDO database connection with prepared statements",
+    "File - File loading and serving utility",
+    "saveImg() - Image upload and compression",
+    "saveFile() - File upload handling",
+    "filterINPUT() - Input sanitization",
+    "error() - Error page redirection",
+    "vista() - View rendering",
+    "modelo() - Model instantiation"
+  ]
+}
