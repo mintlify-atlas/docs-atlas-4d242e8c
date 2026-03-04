@@ -1,80 +1,723 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Build your first SwiftFusePHP application in 10 minutes
 ---
 
-## Get started in three steps
-
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This tutorial guides you through creating a complete CRUD application using SwiftFusePHP's MVC architecture. You'll build a simple contact manager with database operations, routing, and views.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+Before starting, ensure you've completed the [installation guide](/installation) and have SwiftFusePHP running.
 </Note>
+
+## What You'll Build
+
+A contact manager application with:
+- List all contacts
+- View individual contact details
+- Add new contacts
+- Database integration using PDO
+
+## Understanding SwiftFusePHP Architecture
+
+SwiftFusePHP follows the MVC (Model-View-Controller) pattern with automatic URL routing:
+
+```
+URL Pattern: /Controller/Method/Parameters
+
+Example: /Contact/view/5
+├── Controller: Contact
+├── Method: view
+└── Parameters: [5]
+```
+
+The `Core.php` class handles routing automatically:
+
+```php Libreria/Core.php (URL Routing)
+class Core
+{
+    protected $controladorActual = "Inicio";  // Default controller
+    protected $metodoActual = "cargaVista";   // Default method
+    protected $vista = "index";                // Default view
+    protected $parametros = [];
+    
+    public function __construct()
+    {
+        $url = $this->getUrl();
+        
+        // [0] -> Controller
+        if(is_array($url) && file_exists("Controlador/" . ucwords($url[0] . "_Controller.php"))) {
+            $this->controladorActual = ucwords($url[0]);
+            unset($url[0]);
+        }
+        
+        // Require controller file
+        require_once "Controlador/" . $this->controladorActual . "_Controller.php";
+        $this->controladorActual .= "Control";
+        $this->controladorActual = new $this->controladorActual;
+        
+        // [1] -> Method or View
+        if(isset($url[1])) {
+            if (method_exists($this->controladorActual, $url[1])) {
+                $this->metodoActual = $url[1];
+            } else {
+                $this->vista = $url[1];
+            }
+            unset($url[1]);
+        }
+        
+        // [2+] -> Parameters
+        $this->parametros = $url ? array_values($url) : [];
+        
+        // Execute controller method
+        call_user_func_array(
+            [$this->controladorActual, $this->metodoActual], 
+            [$this->vista, $this->parametros]
+        );
+    }
+}
+```
+
+## Step 1: Create the Database
+
+First, create a contacts table in your database:
+
+```sql
+CREATE TABLE contacts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    phone VARCHAR(20),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Insert sample data
+INSERT INTO contacts (name, email, phone) VALUES
+('John Doe', 'john@example.com', '555-0100'),
+('Jane Smith', 'jane@example.com', '555-0101'),
+('Bob Johnson', 'bob@example.com', '555-0102');
+```
+
+## Step 2: Create the Entity Class
+
+Entity classes represent database records as objects. Create `Modelo/Entidad/Contact_Entity.php`:
+
+```php Modelo/Entidad/Contact_Entity.php
+<?php
+
+/**
+ * Contact Entity
+ * Represents a contact record from the database
+ */
+class Contact
+{
+    public $id;
+    public $name;
+    public $email;
+    public $phone;
+    public $created_at;
+    
+    /**
+     * Create a Contact object from an associative array
+     */
+    public static function fromArray($data)
+    {
+        $contact = new self();
+        $contact->id = $data['id'] ?? null;
+        $contact->name = $data['name'] ?? '';
+        $contact->email = $data['email'] ?? '';
+        $contact->phone = $data['phone'] ?? '';
+        $contact->created_at = $data['created_at'] ?? null;
+        return $contact;
+    }
+}
+```
+
+## Step 3: Create the Model
+
+Models handle database operations. Create `Modelo/Contact_Model.php`:
+
+```php Modelo/Contact_Model.php
+<?php
+require_once RUTA_APP . "Modelo/Model_Abstract.php";
+require_once RUTA_APP . "Modelo/Entidad/Contact_Entity.php";
+
+/**
+ * Contact Model
+ * Handles database operations for contacts
+ */
+class ContactMode extends Model
+{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->entidad = new Contact();
+    }
+    
+    /**
+     * Get all contacts
+     * @return array Array of contact records
+     */
+    public function getAll()
+    {
+        $data = array();
+        try {
+            // Prepare query
+            $this->Conexion->query("SELECT * FROM contacts ORDER BY name ASC");
+            
+            // Execute and fetch results
+            $data = $this->Conexion->getsArray();
+            
+            if (count($data) == 0) {
+                $this->mensaje = "No contacts found";
+            }
+        } catch (PDOException $ex) {
+            $this->mensaje = $ex->getMessage();
+        }
+        return $data;
+    }
+    
+    /**
+     * Get a single contact by ID
+     * @param int $id Contact ID
+     * @return object|null Contact object or null if not found
+     */
+    public function getById($id)
+    {
+        try {
+            $this->Conexion->query("SELECT * FROM contacts WHERE id = :id");
+            $this->Conexion->bind(':id', $id);
+            
+            $data = $this->Conexion->getArray();
+            
+            if ($data) {
+                return Contact::fromArray($data);
+            } else {
+                $this->mensaje = "Contact not found";
+                return null;
+            }
+        } catch (PDOException $ex) {
+            $this->mensaje = $ex->getMessage();
+            return null;
+        }
+    }
+    
+    /**
+     * Create a new contact
+     * @param array $data Contact data (name, email, phone)
+     * @return bool Success status
+     */
+    public function create($data)
+    {
+        try {
+            $this->Conexion->query(
+                "INSERT INTO contacts (name, email, phone) VALUES (:name, :email, :phone)"
+            );
+            
+            $this->Conexion->bind(':name', $data['name']);
+            $this->Conexion->bind(':email', $data['email']);
+            $this->Conexion->bind(':phone', $data['phone']);
+            
+            if ($this->Conexion->execute()) {
+                $this->mensaje = "Contact created successfully";
+                return true;
+            } else {
+                $this->mensaje = "Failed to create contact";
+                return false;
+            }
+        } catch (PDOException $ex) {
+            $this->mensaje = $ex->getMessage();
+            return false;
+        }
+    }
+}
+```
+
+<Info>
+The `Conexion` class automatically detects parameter types in the `bind()` method. It handles integers, booleans, nulls, arrays (as JSON), and strings.
+</Info>
+
+## Step 4: Create the Controller
+
+Controllers coordinate between models and views. Create `Controlador/Contact_Controller.php`:
+
+```php Controlador/Contact_Controller.php
+<?php
+
+/**
+ * Contact Controller
+ * Manages contact-related pages and actions
+ */
+class ContactControl extends Controlador
+{
+    protected $folder = "contact";
+    
+    /**
+     * List all contacts (default view)
+     */
+    public function cargaVista($archivo, $data)
+    {
+        if (count($data) == 0) {
+            // Load the list view by default
+            $this->lista($archivo, $data);
+        } else {
+            error(404);
+        }
+    }
+    
+    /**
+     * Display list of all contacts
+     */
+    public function lista($archivo, $data)
+    {
+        $contactModel = $this->modelo('Contact');
+        $contacts = $contactModel->getAll();
+        
+        // Pass contacts to the view
+        $parametro = [
+            'contacts' => $contacts,
+            'mensaje' => $contactModel->getMensaje()
+        ];
+        
+        $this->vista($this->folder . '/lista', $parametro);
+    }
+    
+    /**
+     * Display a single contact
+     * URL: /Contact/view/5
+     */
+    public function view($archivo, $data)
+    {
+        if (count($data) > 0 && is_numeric($data[0])) {
+            $contactModel = $this->modelo('Contact');
+            $contact = $contactModel->getById($data[0]);
+            
+            if ($contact) {
+                $parametro = ['contact' => $contact];
+                $this->vista($this->folder . '/view', $parametro);
+            } else {
+                error(404);
+            }
+        } else {
+            error(404);
+        }
+    }
+    
+    /**
+     * Show create contact form
+     */
+    public function create($archivo, $data)
+    {
+        $this->vista($this->folder . '/create', []);
+    }
+    
+    /**
+     * Handle form submission (AJAX)
+     */
+    public function save($archivo, $data)
+    {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $contactData = [
+                'name' => filterINPUT($_POST['name'] ?? ''),
+                'email' => filterINPUT($_POST['email'] ?? ''),
+                'phone' => filterINPUT($_POST['phone'] ?? '')
+            ];
+            
+            $contactModel = $this->modelo('Contact');
+            $success = $contactModel->create($contactData);
+            
+            $this->retorno = [
+                'mensaje' => $contactModel->getMensaje(),
+                'exito' => $success,
+                'data' => null
+            ];
+            
+            $this->retornar();
+        } else {
+            error(404);
+        }
+    }
+}
+```
+
+<Note>
+The base `Controlador` class provides useful methods:
+- `modelo($name)` - Load and instantiate a model
+- `vista($path, $params)` - Render a view file
+- `retornar()` - Return JSON response for AJAX requests
+</Note>
+
+## Step 5: Create the Views
+
+Views display data to users. Create three view files:
+
+### List View
+
+```php Vista/contact/lista_View.php
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <?php require_once RUTA_APP . "Includ/head.php"; ?>
+    <title>Contact List - <?php echo NOMBRESITIO; ?></title>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1>Contact List</h1>
+        
+        <a href="<?= RUTA_URL; ?>Contact/create" class="btn btn-primary mb-3">
+            Add New Contact
+        </a>
+        
+        <?php if (isset($parametro['mensaje']) && $parametro['mensaje']): ?>
+            <div class="alert alert-info">
+                <?= htmlspecialchars($parametro['mensaje']); ?>
+            </div>
+        <?php endif; ?>
+        
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($parametro['contacts'] as $contact): ?>
+                    <tr>
+                        <td><?= $contact['id']; ?></td>
+                        <td><?= htmlspecialchars($contact['name']); ?></td>
+                        <td><?= htmlspecialchars($contact['email']); ?></td>
+                        <td><?= htmlspecialchars($contact['phone']); ?></td>
+                        <td>
+                            <a href="<?= RUTA_URL; ?>Contact/view/<?= $contact['id']; ?>" 
+                               class="btn btn-sm btn-info">
+                                View
+                            </a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
+```
+
+### Detail View
+
+```php Vista/contact/view_View.php
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <?php require_once RUTA_APP . "Includ/head.php"; ?>
+    <title>Contact Details - <?php echo NOMBRESITIO; ?></title>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1>Contact Details</h1>
+        
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title"><?= htmlspecialchars($parametro['contact']->name); ?></h5>
+                <p class="card-text">
+                    <strong>Email:</strong> <?= htmlspecialchars($parametro['contact']->email); ?><br>
+                    <strong>Phone:</strong> <?= htmlspecialchars($parametro['contact']->phone); ?><br>
+                    <strong>Created:</strong> <?= $parametro['contact']->created_at; ?>
+                </p>
+                <a href="<?= RUTA_URL; ?>Contact" class="btn btn-secondary">Back to List</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+```
+
+### Create Form View
+
+```php Vista/contact/create_View.php
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <?php require_once RUTA_APP . "Includ/head.php"; ?>
+    <title>Add Contact - <?php echo NOMBRESITIO; ?></title>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1>Add New Contact</h1>
+        
+        <form id="contactForm">
+            <div class="mb-3">
+                <label for="name" class="form-label">Name</label>
+                <input type="text" class="form-control" id="name" name="name" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="email" class="form-label">Email</label>
+                <input type="email" class="form-control" id="email" name="email" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="phone" class="form-label">Phone</label>
+                <input type="tel" class="form-control" id="phone" name="phone">
+            </div>
+            
+            <button type="submit" class="btn btn-primary" id="submitBtn">Save Contact</button>
+            <a href="<?= RUTA_URL; ?>Contact" class="btn btn-secondary">Cancel</a>
+        </form>
+        
+        <div id="message" class="mt-3"></div>
+    </div>
+    
+    <script>
+    document.getElementById('contactForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        formData.append('token', '');
+        formData.append('action', 'save');
+        
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving...';
+        
+        try {
+            const response = await fetch('<?= RUTA_URL; ?>Contact/save', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            const messageDiv = document.getElementById('message');
+            
+            if (result.exito) {
+                messageDiv.innerHTML = `<div class="alert alert-success">${result.mensaje}</div>`;
+                setTimeout(() => {
+                    window.location.href = '<?= RUTA_URL; ?>Contact';
+                }, 1500);
+            } else {
+                messageDiv.innerHTML = `<div class="alert alert-danger">${result.mensaje}</div>`;
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Save Contact';
+            }
+        } catch (error) {
+            document.getElementById('message').innerHTML = 
+                `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Save Contact';
+        }
+    });
+    </script>
+</body>
+</html>
+```
+
+## Step 6: Test Your Application
+
+Visit these URLs to test your application:
+
+<CodeGroup>
+```bash List All Contacts
+http://localhost/SwiftFusePHP/Contact
+```
+
+```bash View Specific Contact
+http://localhost/SwiftFusePHP/Contact/view/1
+```
+
+```bash Create New Contact
+http://localhost/SwiftFusePHP/Contact/create
+```
+</CodeGroup>
+
+## Understanding the Data Flow
+
+Here's how a request flows through SwiftFusePHP:
+
+<Steps>
+  <Step title="User visits URL">
+    User navigates to `/Contact/view/5`
+  </Step>
+  
+  <Step title=".htaccess rewrites URL">
+    Apache rewrites to `index.php?url=Contact/view/5`
+  </Step>
+  
+  <Step title="Core.php parses URL">
+    - Controller: `Contact`
+    - Method: `view`
+    - Parameters: `[5]`
+  </Step>
+  
+  <Step title="Controller loads">
+    `Controlador/Contact_Controller.php` is required and instantiated as `ContactControl`
+  </Step>
+  
+  <Step title="Method executes">
+    `ContactControl::view()` is called with parameters `[5]`
+  </Step>
+  
+  <Step title="Model queries database">
+    Controller calls `Contact_Model::getById(5)` which uses `Conexion` class to fetch data
+  </Step>
+  
+  <Step title="View renders">
+    Controller calls `vista()` which includes `Vista/contact/view_View.php` with contact data
+  </Step>
+</Steps>
+
+## Advanced Features
+
+### Using Transactions
+
+The `Conexion` class supports database transactions:
+
+```php
+public function updateContactWithLog($id, $data)
+{
+    try {
+        $this->Conexion->transaction();
+        
+        // Update contact
+        $this->Conexion->query(
+            "UPDATE contacts SET name = :name, email = :email WHERE id = :id"
+        );
+        $this->Conexion->bind(':name', $data['name']);
+        $this->Conexion->bind(':email', $data['email']);
+        $this->Conexion->bind(':id', $id);
+        $this->Conexion->execute();
+        
+        // Log the change
+        $this->Conexion->query(
+            "INSERT INTO contact_logs (contact_id, action) VALUES (:id, 'updated')"
+        );
+        $this->Conexion->bind(':id', $id);
+        $this->Conexion->execute();
+        
+        // Commit both operations
+        $this->Conexion->commit();
+        return true;
+        
+    } catch (PDOException $ex) {
+        $this->Conexion->rollBack();
+        $this->mensaje = $ex->getMessage();
+        return false;
+    }
+}
+```
+
+### Stored Procedures
+
+Call MySQL stored procedures using the `query()` method:
+
+```php
+public function getActiveContacts()
+{
+    $this->Conexion->query("CALL PR_getActiveContacts()");
+    return $this->Conexion->getsArray();
+}
+```
+
+### Input Sanitization
+
+SwiftFusePHP includes the `filterINPUT()` helper function:
+
+```php
+$name = filterINPUT($_POST['name']);
+// - Trims whitespace
+// - Converts 'null' strings to NULL
+// - Blocks HTML tags (returns 400 error if detected)
+```
+
+<Warning>
+Always use `filterINPUT()` on user input and `htmlspecialchars()` in views to prevent XSS attacks.
+</Warning>
+
+## Common URL Patterns
+
+```php
+// Pattern: /Controller/Method/Param1/Param2/...
+
+/Contact              → ContactControl::cargaVista('index', [])
+/Contact/lista        → ContactControl::lista('lista', [])
+/Contact/view/5       → ContactControl::view('view', [5])
+/Contact/edit/5       → ContactControl::edit('edit', [5])
+/Contact/delete/5/1   → ContactControl::delete('delete', [5, 1])
+```
+
+## Next Steps
+
+Congratulations! You've built a complete CRUD application with SwiftFusePHP. Here's what to explore next:
+
+<CardGroup cols={2}>
+  <Card title="Routing Deep Dive" icon="route" href="#">
+    Master advanced routing patterns and custom methods
+  </Card>
+  
+  <Card title="Database Layer" icon="database" href="#">
+    Learn about the Conexion class, transactions, and prepared statements
+  </Card>
+  
+  <Card title="File Uploads" icon="upload" href="#">
+    Use built-in image compression and file handling utilities
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation" href="#">
+    Implement custom error pages and logging
+  </Card>
+</CardGroup>
+
+## Additional Examples
+
+### Example: Person Controller from Source
+
+The SwiftFusePHP source includes a Person controller example:
+
+```php Controlador/Person_Controller.php (Reference)
+class PersonControl extends Controlador
+{
+    protected $folder = "person";
+    
+    // Get all people as JSON
+    public function getAll($archivo, $data)
+    {
+        $personModel = $this->modelo('Person');
+        $people = $personModel->getAll();
+        
+        $this->retorno['exito'] = true;
+        $this->retorno['data'] = $people;
+        $this->retorno['mensaje'] = $personModel->getMensaje();
+        
+        $this->retornar(); // Returns JSON
+    }
+}
+```
+
+This pattern is ideal for AJAX endpoints that return JSON data.
+
+## Troubleshooting
+
+### Controller Not Found
+
+If you get a 404 error when accessing `/Contact`:
+1. Verify file exists: `Controlador/Contact_Controller.php`
+2. Check class name is `ContactControl` (Controller name + "Control")
+3. Ensure class extends `Controlador`
+
+### View Not Found
+
+If view doesn't load:
+1. Check file path: `Vista/{folder}/{view}_View.php`
+2. Verify `$folder` property in controller matches directory name
+3. SwiftFusePHP looks for `.html` first, then `.php`
+
+### Database Errors
+
+Enable error display temporarily to debug:
+```php index.php
+error_reporting(E_ALL);
+// Comment out: error_reporting(0);
+```
+
+Check the error log at `Errores/log.php` for detailed PDO exceptions.

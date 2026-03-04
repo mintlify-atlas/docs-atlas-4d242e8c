@@ -1,0 +1,733 @@
+---
+title: 'Best Practices & Patterns'
+description: 'Recommended patterns, security practices, and performance optimization for SwiftFusePHP'
+---
+
+## Overview
+
+This guide provides best practices, security recommendations, and performance optimization tips for building robust SwiftFusePHP applications based on real patterns found in the framework.
+
+## Code Organization
+
+### Directory Structure Best Practices
+
+Organize your code following these conventions:
+
+```
+Controlador/
+├── Admin/              # Admin-specific controllers
+│   ├── Users_Controller.php
+│   └── Settings_Controller.php
+├── Api/                # API endpoints
+│   ├── Products_Controller.php
+│   └── Orders_Controller.php
+├── Inicio_Controller.php
+└── Error_Controller.php
+
+Modelo/
+├── Admin/              # Admin models
+│   └── AdminUser_Model.php
+├── Entidad/            # Entity classes
+│   ├── Usuario_Entity.php
+│   └── Product_Entity.php
+├── Usuario_Model.php
+└── Product_Model.php
+
+Vista/
+├── admin/              # Admin views
+├── api/                # API response templates
+├── error/              # Error pages
+├── inicio/             # Home views
+└── shared/             # Reusable components
+```
+
+### Naming Conventions
+
+**Controllers:**
+```php
+// File: Controlador/Products_Controller.php
+class ProductsControl extends Controlador { }
+
+// File: Controlador/Admin/Users_Controller.php  
+class UsersControl extends Controlador { }
+```
+
+**Models:**
+```php
+// File: Modelo/Product_Model.php
+class ProductMode extends Model { }
+
+// File: Modelo/Entidad/Product_Entity.php
+class Product { }
+```
+
+**Views:**
+```
+Vista/products/list_View.php
+Vista/products/details_View.php
+```
+
+## Security Best Practices
+
+### 1. Input Validation and Filtering
+
+Always use `filterINPUT()` for user input:
+
+```php
+// Filters HTML tags and validates input
+$nombre = filterINPUT($_POST['nombre']);
+$email = filterINPUT($_POST['email']);
+
+// Returns null for empty or 'null' strings
+// Triggers error(400) if HTML tags detected
+if ($nombre === null) {
+    $this->retorno['mensaje'] = "Name is required";
+    $this->retornar();
+}
+```
+
+**What filterINPUT() does:**
+- Trims whitespace
+- Converts empty strings and 'null'/'NULL' to null
+- Detects HTML tags and triggers 400 error
+- Prevents XSS attacks
+
+### 2. Database Security
+
+**Always use prepared statements:**
+
+```php
+// Correct - Using prepared statements
+public function getByEmail($email)
+{
+    try {
+        $this->Conexion->query("SELECT * FROM usuarios WHERE email = :email");
+        $this->Conexion->bind(':email', $email);
+        return $this->Conexion->getArray();
+    } catch (PDOException $ex) {
+        $this->mensaje = $ex->getMessage();
+        return null;
+    }
+}
+
+// NEVER do this - SQL injection vulnerable
+$sql = "SELECT * FROM usuarios WHERE email = '{$email}'";
+```
+
+**Parameter binding with automatic type detection:**
+
+```php
+$this->Conexion->query("INSERT INTO products (name, price, active) 
+                        VALUES (:name, :price, :active)");
+$this->Conexion->bind(':name', 'Product Name');    // PDO::PARAM_STR (auto)
+$this->Conexion->bind(':price', 99.99);            // PDO::PARAM_STR (auto)
+$this->Conexion->bind(':active', true);            // PDO::PARAM_BOOL (auto)
+$this->Conexion->execute();
+```
+
+### 3. Password Security
+
+```php
+// Hashing passwords
+public function createUser($data)
+{
+    $hashedPassword = password_hash($data['password'], PASSWORD_DEFAULT);
+    
+    $this->Conexion->query(
+        "INSERT INTO usuarios (email, password) VALUES (:email, :password)"
+    );
+    $this->Conexion->bind(':email', $data['email']);
+    $this->Conexion->bind(':password', $hashedPassword);
+    
+    return $this->Conexion->execute();
+}
+
+// Verifying passwords
+public function authenticate($email, $password)
+{
+    $this->Conexion->query("SELECT * FROM usuarios WHERE email = :email");
+    $this->Conexion->bind(':email', $email);
+    $user = $this->Conexion->getArray();
+    
+    if ($user && password_verify($password, $user['password'])) {
+        // Password correct
+        unset($user['password']); // Never store password in session
+        $_SESSION['user'] = $user;
+        return true;
+    }
+    
+    return false;
+}
+```
+
+### 4. Session Security
+
+```php
+// Libreria/Controlador.user.php
+abstract class ControladorUser
+{
+    protected function requireAuth()
+    {
+        if (!isset($_SESSION['user'])) {
+            error(403);
+        }
+        
+        // Regenerate session ID to prevent fixation
+        if (!isset($_SESSION['regenerated'])) {
+            session_regenerate_id(true);
+            $_SESSION['regenerated'] = true;
+        }
+    }
+    
+    protected function logout()
+    {
+        session_unset();
+        session_destroy();
+        session_start();
+        session_regenerate_id(true);
+    }
+}
+```
+
+### 5. CSRF Protection
+
+```php
+// Generate token
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+// In forms
+<input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+
+// Validate in controller
+public function save($view, $params)
+{
+    if ($_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        error(400);
+    }
+    
+    // Process form
+}
+```
+
+### 6. File Upload Security
+
+Use the built-in `saveImg()` and `saveFile()` functions:
+
+```php
+// Image upload with validation
+public function uploadImage()
+{
+    if (!isset($_FILES['imagen'])) {
+        $this->retorno['mensaje'] = "No file uploaded";
+        $this->retornar();
+    }
+    
+    // saveImg validates file type, resizes if needed, and prevents code execution
+    $imagenes = saveImg($_FILES['imagen'], "Archivos/productos");
+    
+    if ($imagenes === false) {
+        $this->retorno['mensaje'] = "Invalid image file";
+    } else {
+        $this->retorno['exito'] = true;
+        $this->retorno['data'] = $imagenes;
+    }
+    
+    $this->retornar();
+}
+```
+
+**What saveImg() does for security:**
+- Validates file type using `getimagesize()` (not just MIME type)
+- Only allows JPEG, PNG, GIF, WEBP
+- Generates random filenames to prevent overwrites
+- Automatically compresses large images
+- Prevents code execution in uploaded files
+
+### 7. Error Handling
+
+```php
+// Development
+define('ENV', 'dev');
+define('DISPLAY_ERRORS', TRUE);
+
+// Production - Hide errors from users
+define('ENV', 'prod');
+define('DISPLAY_ERRORS', FALSE);
+define('LOG_ERRORS', TRUE);
+```
+
+**Custom error logging:**
+
+```php
+try {
+    // Database operation
+    $this->Conexion->query($sql);
+    $this->Conexion->execute();
+} catch (PDOException $ex) {
+    // Log error but don't expose details to user
+    handler(E_ERROR, $ex->getMessage(), __FILE__, __LINE__);
+    $this->mensaje = "An error occurred. Please try again later.";
+    return false;
+}
+```
+
+## Performance Optimization
+
+### 1. Database Query Optimization
+
+**Use stored procedures for complex queries:**
+
+```php
+// More efficient than multiple queries
+public function getAllWithRelations()
+{
+    $this->Conexion->query("CALL PR_getAllPeople();");
+    return $this->Conexion->getsArray();
+}
+```
+
+**Limit result sets:**
+
+```php
+public function getPaginated($page = 1, $perPage = 20)
+{
+    $offset = ($page - 1) * $perPage;
+    
+    $this->Conexion->query(
+        "SELECT * FROM usuarios LIMIT :limit OFFSET :offset"
+    );
+    $this->Conexion->bind(':limit', $perPage, PDO::PARAM_INT);
+    $this->Conexion->bind(':offset', $offset, PDO::PARAM_INT);
+    
+    return $this->Conexion->getsArray();
+}
+```
+
+**Use indexes:**
+
+```sql
+CREATE INDEX idx_email ON usuarios(email);
+CREATE INDEX idx_created_at ON usuarios(created_at);
+```
+
+### 2. Connection Pooling
+
+The framework uses persistent connections by default:
+
+```php
+// In Modelo/Conexion_Model.php
+$opciones = [
+    PDO::ATTR_PERSISTENT => true,  // Reuse connections
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+];
+```
+
+### 3. Image Optimization
+
+The `saveImg()` function automatically optimizes images:
+
+```php
+// Automatically resizes images over 1280px width
+// Compresses images over 100KB
+// Maintains aspect ratio
+$max_ancho = 1280;
+$max_alto = 900;
+```
+
+**Custom optimization:**
+
+```php
+function saveOptimizedImg($imgs, $relativePath, $maxWidth = 1280)
+{
+    // Reduce max dimensions for thumbnails
+    $result = saveImg($imgs, $relativePath);
+    return $result;
+}
+```
+
+### 4. Caching Strategies
+
+**Session-based caching:**
+
+```php
+public function getCategories()
+{
+    // Cache in session for 5 minutes
+    if (isset($_SESSION['categories_cache']) && 
+        time() - $_SESSION['categories_cache_time'] < 300) {
+        return $_SESSION['categories_cache'];
+    }
+    
+    $categories = $this->Category->getAll();
+    $_SESSION['categories_cache'] = $categories;
+    $_SESSION['categories_cache_time'] = time();
+    
+    return $categories;
+}
+```
+
+**File-based caching:**
+
+```php
+public function getCachedData($key, $callback, $ttl = 3600)
+{
+    $cacheFile = RUTA_APP . "Archivos/cache/{$key}.json";
+    
+    if (file_exists($cacheFile) && time() - filemtime($cacheFile) < $ttl) {
+        return json_decode(file_get_contents($cacheFile), true);
+    }
+    
+    $data = $callback();
+    mkdirs("Archivos/cache");
+    file_put_contents($cacheFile, json_encode($data));
+    
+    return $data;
+}
+
+// Usage
+$products = $this->getCachedData('products_list', function() {
+    return $this->Product->getAll();
+}, 1800); // 30 minutes
+```
+
+### 5. Lazy Loading Models
+
+```php
+class DashboardControl extends Controlador
+{
+    private $User = null;
+    private $Product = null;
+    
+    private function getUserModel()
+    {
+        if ($this->User === null) {
+            $this->User = $this->modelo("Usuario");
+        }
+        return $this->User;
+    }
+    
+    public function stats()
+    {
+        // Only loads User model when needed
+        $userCount = $this->getUserModel()->count();
+        // Product model never loaded if not needed
+    }
+}
+```
+
+### 6. Reduce Database Queries
+
+**Bad - N+1 query problem:**
+```php
+$users = $this->User->getAll();
+foreach ($users as &$user) {
+    $user['orders'] = $this->Order->getByUserId($user['id']); // N queries
+}
+```
+
+**Good - Single query with JOIN:**
+```php
+public function getAllWithOrders()
+{
+    $sql = "SELECT u.*, COUNT(o.id) as order_count 
+            FROM usuarios u 
+            LEFT JOIN orders o ON u.id = o.usuario_id 
+            GROUP BY u.id";
+    $this->Conexion->query($sql);
+    return $this->Conexion->getsArray();
+}
+```
+
+## Common Patterns
+
+### 1. Repository Pattern
+
+Encapsulate data access logic:
+
+```php
+class ProductRepository
+{
+    private $Product;
+    
+    public function __construct($productModel)
+    {
+        $this->Product = $productModel;
+    }
+    
+    public function findActive()
+    {
+        return $this->Product->getActive();
+    }
+    
+    public function findByCategory($categoryId)
+    {
+        return $this->Product->getByCategory($categoryId);
+    }
+    
+    public function search($term)
+    {
+        return $this->Product->search($term);
+    }
+}
+
+// Usage in controller
+class ProductsControl extends Controlador
+{
+    private $repository;
+    
+    public function __construct()
+    {
+        $productModel = $this->modelo("Product");
+        $this->repository = new ProductRepository($productModel);
+    }
+    
+    public function list()
+    {
+        $products = $this->repository->findActive();
+        $this->retorno['exito'] = true;
+        $this->retorno['data'] = $products;
+        $this->retornar();
+    }
+}
+```
+
+### 2. Service Layer Pattern
+
+Encapsulate business logic:
+
+```php
+class OrderService
+{
+    private $Order;
+    private $Product;
+    private $User;
+    
+    public function __construct($orderModel, $productModel, $userModel)
+    {
+        $this->Order = $orderModel;
+        $this->Product = $productModel;
+        $this->User = $userModel;
+    }
+    
+    public function createOrder($userId, $items)
+    {
+        // Validate user
+        $user = $this->User->getById($userId);
+        if (!$user) {
+            throw new Exception("User not found");
+        }
+        
+        // Calculate total
+        $total = 0;
+        foreach ($items as $item) {
+            $product = $this->Product->getById($item['product_id']);
+            if (!$product || $product['stock'] < $item['quantity']) {
+                throw new Exception("Product unavailable");
+            }
+            $total += $product['price'] * $item['quantity'];
+        }
+        
+        // Create order
+        return $this->Order->create([
+            'user_id' => $userId,
+            'total' => $total,
+            'items' => $items
+        ]);
+    }
+}
+```
+
+### 3. Response Standardization
+
+```php
+abstract class ControladorUser
+{
+    protected function jsonSuccess($data = null, $message = null)
+    {
+        $this->retorno['exito'] = true;
+        $this->retorno['data'] = $data;
+        $this->retorno['mensaje'] = $message;
+        $this->retornar();
+    }
+    
+    protected function jsonError($message, $code = 400)
+    {
+        setStatusCode($code);
+        $this->retorno['exito'] = false;
+        $this->retorno['mensaje'] = $message;
+        $this->retornar();
+    }
+}
+
+// Usage
+public function save()
+{
+    $result = $this->Product->create($_POST);
+    
+    if ($result) {
+        $this->jsonSuccess($result, "Product created");
+    } else {
+        $this->jsonError("Failed to create product");
+    }
+}
+```
+
+### 4. Validation Pattern
+
+```php
+class Validator
+{
+    private $errors = [];
+    
+    public function required($value, $field)
+    {
+        if (empty($value)) {
+            $this->errors[$field] = "{$field} is required";
+        }
+        return $this;
+    }
+    
+    public function email($value, $field)
+    {
+        if (!isEmail($value)) {
+            $this->errors[$field] = "Invalid email format";
+        }
+        return $this;
+    }
+    
+    public function min($value, $min, $field)
+    {
+        if (strlen($value) < $min) {
+            $this->errors[$field] = "{$field} must be at least {$min} characters";
+        }
+        return $this;
+    }
+    
+    public function fails()
+    {
+        return !empty($this->errors);
+    }
+    
+    public function getErrors()
+    {
+        return $this->errors;
+    }
+}
+
+// Usage
+public function register()
+{
+    $validator = new Validator();
+    $validator
+        ->required($_POST['nombre'], 'nombre')
+        ->required($_POST['email'], 'email')
+        ->email($_POST['email'], 'email')
+        ->required($_POST['password'], 'password')
+        ->min($_POST['password'], 8, 'password');
+    
+    if ($validator->fails()) {
+        $this->jsonError($validator->getErrors());
+    }
+    
+    // Proceed with registration
+}
+```
+
+## Maintenance Mode
+
+Use the `suspend()` function for maintenance:
+
+```php
+// In index.php or Config/configurar.user.php
+
+// Only allow logged-in users during maintenance
+suspend(true);
+
+// Block all users
+suspend(false);
+```
+
+## Utility Functions
+
+### Date Formatting
+
+```php
+$fecha = getDateInSpanish('2026-03-04'); // "4 de marzo de 2026"
+$mes = getMonthInSpanish(2); // "Marzo" (0-indexed)
+```
+
+### Currency Formatting
+
+```php
+$price = formatCurrency(1500000); // "💲 1.500.000"
+$price = formatCurrency(1500000, "$"); // "$ 1.500.000"
+```
+
+### Safe SQL String
+
+```php
+$name = stringWithQuotationMark("John O'Neil"); // "'John O\'Neil'"
+$empty = stringWithQuotationMark(null); // "null"
+```
+
+## Testing Tips
+
+### Test Database Operations
+
+```php
+// Use transactions for testing
+public function testCreate()
+{
+    $this->Conexion->transaction();
+    
+    $result = $this->User->create(['nombre' => 'Test', 'email' => 'test@test.com']);
+    
+    if ($result) {
+        echo "Test passed";
+    }
+    
+    // Rollback to keep database clean
+    $this->Conexion->rollBack();
+}
+```
+
+### Debug Helper
+
+```php
+function dd($data)
+{
+    echo '<pre>';
+    var_dump($data);
+    echo '</pre>';
+    die();
+}
+```
+
+## Deployment Checklist
+
+- [ ] Set `ENV` to `'prod'` in `Errores/log.php`
+- [ ] Set `DISPLAY_ERRORS` to `FALSE`
+- [ ] Update database credentials in `Config/configurar.user.php`
+- [ ] Configure SSL with `is_ssl(true)` or `is_ssl(null)`
+- [ ] Update `LOCALDIR` constant if needed
+- [ ] Verify `.htaccess` RewriteBase
+- [ ] Set proper file permissions (755 for directories, 644 for files)
+- [ ] Ensure `Errores/` and `Archivos/` are writable
+- [ ] Remove test/debug code
+- [ ] Enable error logging
+- [ ] Configure backup strategy
+- [ ] Set up SSL certificate
+- [ ] Configure security headers in `.htaccess`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Review configuration options
+  </Card>
+  <Card title="Extending Framework" icon="puzzle-piece" href="/extending">
+    Customize framework behavior
+  </Card>
+</CardGroup>

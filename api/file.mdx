@@ -1,0 +1,483 @@
+---
+title: 'File'
+description: 'File serving utility class'
+icon: 'file'
+---
+
+## Overview
+
+The `File` class provides a simple way to serve files with proper MIME types through the framework's routing system. It handles file loading, MIME type detection, and security checks.
+
+## Location
+
+```
+Libreria/File.php
+```
+
+## Public Methods
+
+### load()
+
+Loads and serves a file with appropriate headers.
+
+```php
+public function load(string $file): void
+```
+
+<ParamField path="file" type="string" required>
+  Relative path to the file from `RUTA_APP` directory
+</ParamField>
+
+**Behavior:**
+- Sets `Content-Type` header based on file MIME type
+- Outputs file contents using `readfile()`
+- Returns 403 error if path is a directory
+- Returns 404 error if file doesn't exist
+- Automatically detects MIME type using `mime_content_type()`
+
+**Security:**
+- Prevents directory browsing
+- Validates file existence before serving
+- No execution of file contents
+
+**Example:**
+
+```php
+$file = new File();
+
+// Serve an image
+$file->load('Archivos/imagenes/logo.png');
+// Sets: Content-Type: image/png
+// Outputs: [binary image data]
+
+// Serve a PDF
+$file->load('Archivos/documentos/manual.pdf');
+// Sets: Content-Type: application/pdf
+
+// Serve a JSON file
+$file->load('Archivos/data/config.json');
+// Sets: Content-Type: application/json
+```
+
+## Creating a File Controller
+
+Typical implementation for serving dynamic files:
+
+```php
+<?php
+// Controlador/Archivo_Controller.php
+
+class ArchivoControl extends Controlador {
+    protected $folder = "";
+    
+    /**
+     * Serve file from URL
+     * URL: /archivo/ver/{path}
+     */
+    public function ver($vista, $params) {
+        if (empty($params)) {
+            error(404);
+        }
+        
+        // Reconstruct file path from parameters
+        $filePath = implode('/', $params);
+        
+        $file = new File();
+        $file->load('Archivos/' . $filePath);
+    }
+    
+    /**
+     * Serve protected file with authentication
+     */
+    public function privado($vista, $params) {
+        // Check user authentication
+        if (!isset($_SESSION['usuario'])) {
+            error(403);
+        }
+        
+        $filePath = implode('/', $params);
+        
+        // Validate user has access to this file
+        $archivoModel = $this->modelo("Archivo");
+        if (!$archivoModel->usuarioTieneAcceso($_SESSION['usuario']['id'], $filePath)) {
+            error(403);
+        }
+        
+        $file = new File();
+        $file->load('Archivos/privados/' . $filePath);
+    }
+}
+```
+
+## Usage Examples
+
+### Basic File Serving
+
+```php
+// Controller method
+class DescargasControl extends Controlador {
+    public function documento($vista, $params) {
+        $id = $params[0];
+        
+        // Get file path from database
+        $documentoModel = $this->modelo("Documento");
+        $documento = $documentoModel->getById($id);
+        
+        if (!$documento) {
+            error(404);
+        }
+        
+        $file = new File();
+        $file->load($documento->ruta_archivo);
+    }
+}
+
+// URL: /descargas/documento/123
+```
+
+### Serving User Uploads
+
+```php
+class UsuariosControl extends Controlador {
+    protected $folder = "usuarios";
+    
+    public function foto($vista, $params) {
+        $usuarioId = $params[0];
+        
+        // Get user's photo
+        $usuarioModel = $this->modelo("Usuario");
+        $usuario = $usuarioModel->getById($usuarioId);
+        
+        if (!$usuario || !$usuario->foto) {
+            // Serve default avatar
+            $file = new File();
+            $file->load('Archivos/default/avatar.png');
+            return;
+        }
+        
+        $file = new File();
+        $file->load('Archivos/usuarios/' . $usuario->foto);
+    }
+}
+
+// URL: /usuarios/foto/5
+// Serves: Archivos/usuarios/{photo_filename}
+```
+
+### Download with Custom Filename
+
+```php
+class ReportesControl extends Controlador {
+    protected $folder = "reportes";
+    
+    public function descargar($vista, $params) {
+        $reporteId = $params[0];
+        
+        $reporteModel = $this->modelo("Reporte");
+        $reporte = $reporteModel->getById($reporteId);
+        
+        if (!$reporte) {
+            error(404);
+        }
+        
+        // Set download filename
+        header('Content-Disposition: attachment; filename="' . $reporte->nombre . '.pdf"');
+        
+        $file = new File();
+        $file->load($reporte->archivo_path);
+    }
+}
+
+// URL: /reportes/descargar/10
+// Downloads as: "Reporte_Mensual_Enero.pdf"
+```
+
+## MIME Type Detection
+
+The File class automatically detects and sets the correct MIME type:
+
+| File Extension | MIME Type |
+|----------------|--------------------|
+| .jpg, .jpeg    | image/jpeg |
+| .png           | image/png |
+| .gif           | image/gif |
+| .webp          | image/webp |
+| .pdf           | application/pdf |
+| .json          | application/json |
+| .xml           | application/xml |
+| .zip           | application/zip |
+| .txt           | text/plain |
+| .html          | text/html |
+| .css           | text/css |
+| .js            | application/javascript |
+| .mp4           | video/mp4 |
+| .mp3           | audio/mpeg |
+
+## Security Considerations
+
+<AccordionGroup>
+  <Accordion title="Path Traversal Prevention">
+    Always validate and sanitize file paths to prevent directory traversal attacks:
+    
+    ```php
+    public function ver($vista, $params) {
+        $filePath = implode('/', $params);
+        
+        // Prevent path traversal
+        if (strpos($filePath, '..') !== false) {
+            error(403);
+        }
+        
+        // Whitelist allowed directories
+        if (!str_starts_with($filePath, 'uploads/') && 
+            !str_starts_with($filePath, 'public/')) {
+            error(403);
+        }
+        
+        $file = new File();
+        $file->load('Archivos/' . $filePath);
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Access Control">
+    Implement authentication and authorization:
+    
+    ```php
+    public function privado($vista, $params) {
+        // Require login
+        if (!isset($_SESSION['user'])) {
+            error(403);
+        }
+        
+        $filePath = implode('/', $params);
+        
+        // Check permissions
+        $archivoModel = $this->modelo("Archivo");
+        $archivo = $archivoModel->getByPath($filePath);
+        
+        if (!$archivo || $archivo->propietario_id != $_SESSION['user']['id']) {
+            error(403);
+        }
+        
+        $file = new File();
+        $file->load($archivo->ruta_completa);
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="File Type Restrictions">
+    Restrict access to specific file types:
+    
+    ```php
+    public function ver($vista, $params) {
+        $filePath = implode('/', $params);
+        
+        // Only allow images and PDFs
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf'];
+        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
+        
+        if (!in_array(strtolower($extension), $allowedExtensions)) {
+            error(403);
+        }
+        
+        $file = new File();
+        $file->load('Archivos/' . $filePath);
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Advanced Usage
+
+### Streaming Large Files
+
+```php
+class VideoControl extends Controlador {
+    protected $folder = "video";
+    
+    public function stream($vista, $params) {
+        $videoId = $params[0];
+        
+        $videoModel = $this->modelo("Video");
+        $video = $videoModel->getById($videoId);
+        
+        if (!$video) {
+            error(404);
+        }
+        
+        // Set headers for video streaming
+        header('Content-Type: video/mp4');
+        header('Accept-Ranges: bytes');
+        header('Content-Length: ' . filesize(RUTA_APP . $video->ruta));
+        
+        $file = new File();
+        $file->load($video->ruta);
+    }
+}
+```
+
+### Conditional File Serving
+
+```php
+class ImagenControl extends Controlador {
+    protected $folder = "";
+    
+    public function thumbnail($vista, $params) {
+        $imagenId = $params[0];
+        $size = $params[1] ?? 'medium'; // small, medium, large
+        
+        $imagenModel = $this->modelo("Imagen");
+        $imagen = $imagenModel->getById($imagenId);
+        
+        if (!$imagen) {
+            error(404);
+        }
+        
+        // Serve different sizes
+        $path = match($size) {
+            'small' => $imagen->ruta_small,
+            'large' => $imagen->ruta_large,
+            default => $imagen->ruta_medium
+        };
+        
+        $file = new File();
+        $file->load($path);
+    }
+}
+
+// URL: /imagen/thumbnail/5/large
+```
+
+### File with Logging
+
+```php
+class DescargaControl extends Controlador {
+    protected $folder = "";
+    
+    public function archivo($vista, $params) {
+        $archivoId = $params[0];
+        
+        $archivoModel = $this->modelo("Archivo");
+        $archivo = $archivoModel->getById($archivoId);
+        
+        if (!$archivo) {
+            error(404);
+        }
+        
+        // Log download
+        $logModel = $this->modelo("Log");
+        $logModel->registrarDescarga(
+            $archivoId,
+            $_SESSION['user']['id'] ?? null,
+            $_SERVER['REMOTE_ADDR']
+        );
+        
+        // Increment download counter
+        $archivoModel->incrementarDescargas($archivoId);
+        
+        // Set download header
+        header('Content-Disposition: attachment; filename="' . $archivo->nombre . '"');
+        
+        $file = new File();
+        $file->load($archivo->ruta);
+    }
+}
+```
+
+## Error Handling
+
+```php
+class FileControl extends Controlador {
+    protected $folder = "";
+    
+    public function ver($vista, $params) {
+        try {
+            $filePath = implode('/', $params);
+            
+            // Validation
+            if (empty($filePath)) {
+                throw new Exception("No file specified");
+            }
+            
+            // Security check
+            if (strpos($filePath, '..') !== false) {
+                throw new Exception("Invalid path");
+            }
+            
+            $fullPath = 'Archivos/' . $filePath;
+            
+            // Check if file exists before File class
+            if (!file_exists(RUTA_APP . $fullPath)) {
+                error(404);
+            }
+            
+            // Check if path is directory
+            if (is_dir(RUTA_APP . $fullPath)) {
+                error(403);
+            }
+            
+            $file = new File();
+            $file->load($fullPath);
+            
+        } catch (Exception $e) {
+            error_log("File load error: " . $e->getMessage());
+            error(500);
+        }
+    }
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Validate Paths" icon="shield-check">
+    Always validate file paths to prevent security vulnerabilities
+  </Card>
+  <Card title="Check Permissions" icon="lock">
+    Implement proper access control for sensitive files
+  </Card>
+  <Card title="Set Proper Headers" icon="file-code">
+    Use appropriate headers for downloads and streaming
+  </Card>
+  <Card title="Log Access" icon="list">
+    Track file access for security and analytics
+  </Card>
+</CardGroup>
+
+## Integration with Storage
+
+```php
+// Store file reference in database
+public function subirArchivo() {
+    $archivo = saveFile($_FILES['archivo'], 'Archivos/uploads');
+    
+    if ($archivo) {
+        $archivoModel = $this->modelo("Archivo");
+        $id = $archivoModel->insert([
+            'nombre' => $_FILES['archivo']['name'],
+            'ruta' => 'Archivos/uploads/' . $archivo[0],
+            'usuario_id' => $_SESSION['user']['id']
+        ]);
+        
+        echo "Archivo guardado con ID: {$id}";
+    }
+}
+
+// Retrieve and serve
+public function descargar($vista, $params) {
+    $id = $params[0];
+    
+    $archivoModel = $this->modelo("Archivo");
+    $archivo = $archivoModel->getById($id);
+    
+    $file = new File();
+    $file->load($archivo->ruta);
+}
+```
+
+## See Also
+
+- [Functions](/api/functions) - File upload functions (`saveImg`, `saveFile`)
+- [Controlador](/api/controlador) - Using File in controllers
+- [File Upload Guide](/file-handling) - Complete file handling guide

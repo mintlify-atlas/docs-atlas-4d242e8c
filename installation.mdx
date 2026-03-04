@@ -1,0 +1,302 @@
+---
+title: Installation
+description: Install and configure SwiftFusePHP on your local development environment
+---
+
+SwiftFusePHP is a lightweight PHP MVC framework (v0.9.3) that provides elegant URL routing, PDO database abstraction, and a clean separation of concerns. This guide will walk you through the complete installation process.
+
+## Requirements
+
+Before installing SwiftFusePHP, ensure your system meets these requirements:
+
+- PHP 7.4 or higher
+- Apache web server with mod_rewrite enabled
+- MySQL 5.7+ or MariaDB 10.2+
+- Composer (optional, for dependency management)
+
+<Note>
+SwiftFusePHP uses PDO for database connections and requires the PDO_MYSQL extension to be enabled in your php.ini file.
+</Note>
+
+## Installation Steps
+
+<Steps>
+  <Step title="Download SwiftFusePHP">
+    Clone or download the SwiftFusePHP framework to your web server directory:
+
+    ```bash
+    cd /var/www/html
+    git clone https://github.com/your-repo/SwiftFusePHP.git
+    cd SwiftFusePHP
+    ```
+
+    Alternatively, download the latest release and extract it to your web directory.
+  </Step>
+
+  <Step title="Configure Apache mod_rewrite">
+    SwiftFusePHP requires Apache's mod_rewrite module for clean URLs. Enable it if not already active:
+
+    ```bash
+    sudo a2enmod rewrite
+    sudo systemctl restart apache2
+    ```
+
+    <Info>
+    On Windows with XAMPP, mod_rewrite is typically enabled by default. Verify in your httpd.conf that the line `LoadModule rewrite_module modules/mod_rewrite.so` is uncommented.
+    </Info>
+  </Step>
+
+  <Step title="Configure .htaccess">
+    The framework includes a `.htaccess` file that handles URL routing. Update the `RewriteBase` directive to match your installation directory:
+
+    ```apache .htaccess
+    # Deny directory listing without index
+    Options -Indexes
+    
+    # Deny access to sensitive files
+    <FilesMatch "\.(htaccess|sql|git|gitignore|sh)$">
+    Order Allow,Deny
+    Deny from all
+    </FilesMatch>
+    
+    # URL Rewriting
+    <IfModule mod_rewrite.c>
+    Options -Multiviews
+    RewriteEngine On
+    # Update this to match your installation path
+    RewriteBase /SwiftFusePHP/
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^([-a-zA-Z0-9/(í,ú,á,ñ)]+)$ index.php?url=$1 [QSA,L]
+    </IfModule>
+    
+    # Optional: Increase file upload limits
+    #php_value upload_max_filesize 200M
+    #php_value post_max_size 200M
+    #php_value max_execution_time 1000
+    ```
+
+    <Warning>
+    If you're installing in the web root, set `RewriteBase /`. For subdirectories, use the full path like `/myapp/`.
+    </Warning>
+  </Step>
+
+  <Step title="Configure Database Connection">
+    Edit the `Config/configurar.user.php` file with your database credentials:
+
+    ```php Config/configurar.user.php
+    <?php
+    // Timezone configuration
+    date_default_timezone_set("America/Bogota");
+    
+    // Database configuration
+    define("HOST", "localhost");
+    define("USERNAME", "your_db_user");
+    define("PASSWORD", "your_db_password");
+    define("DATABASE", "your_database_name");
+    
+    // Installation directory (relative to web root)
+    define("LOCALDIR", "SwiftFusePHP/");
+    
+    // SSL Certificate for database (leave empty if not using SSL)
+    define("SSL_CA", "");
+    
+    // Force SSL (true/false/null for auto-detection)
+    is_ssl(true);
+    
+    // Site configuration
+    define("NOMBRESITIO", "My SwiftFuse Application");
+    define("VERSION", "0.1");
+    ?>
+    ```
+
+    <Info>
+    The `LOCALDIR` constant must match your `.htaccess` `RewriteBase` value. If installing in the root directory, set both to `/`.
+    </Info>
+  </Step>
+
+  <Step title="Create Database">
+    Create your MySQL database and import any initial schema:
+
+    ```sql
+    CREATE DATABASE your_database_name CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    GRANT ALL PRIVILEGES ON your_database_name.* TO 'your_db_user'@'localhost';
+    FLUSH PRIVILEGES;
+    ```
+  </Step>
+
+  <Step title="Set Permissions">
+    Ensure proper file permissions for security:
+
+    ```bash
+    # Set ownership (adjust user/group as needed)
+    sudo chown -R www-data:www-data /var/www/html/SwiftFusePHP
+    
+    # Set directory permissions
+    find . -type d -exec chmod 755 {} \;
+    
+    # Set file permissions
+    find . -type f -exec chmod 644 {} \;
+    
+    # Make Errores directory writable for error logging
+    chmod 775 Errores
+    ```
+
+    <Warning>
+    Never set permissions to 777 in production. This creates security vulnerabilities.
+    </Warning>
+  </Step>
+
+  <Step title="Verify Installation">
+    Visit your installation URL in a web browser:
+
+    ```
+    http://localhost/SwiftFusePHP/
+    ```
+
+    You should see the default welcome page. If you encounter errors, check:
+    - Apache error logs: `/var/log/apache2/error.log`
+    - PHP error logs
+    - SwiftFusePHP error logs in `Errores/log.php`
+  </Step>
+</Steps>
+
+## Directory Structure
+
+After installation, your SwiftFusePHP directory should look like this:
+
+```
+SwiftFusePHP/
+├── Controlador/          # Controllers
+│   ├── Error_Controller.php
+│   └── Inicio_Controller.php
+├── Modelo/               # Models
+│   ├── Entidad/         # Entity classes
+│   ├── Conexion_Model.php
+│   └── Model_Abstract.php
+├── Vista/                # Views
+│   ├── inicio/
+│   └── error/
+├── Libreria/             # Core framework files
+│   ├── Core.php         # URL router
+│   └── Controlador.php  # Base controller
+├── Config/               # Configuration
+│   ├── configurar.php
+│   └── configurar.user.php
+├── Includ/               # Shared includes (header, footer)
+├── Errores/              # Error logs
+├── Archivos/             # File uploads
+├── .htaccess            # Apache configuration
+└── index.php            # Application entry point
+```
+
+## Database Connection
+
+SwiftFusePHP uses PDO with prepared statements for secure database access. The `Conexion` class in `Modelo/Conexion_Model.php` handles all database operations:
+
+```php
+class Conexion
+{
+    private $host = HOST;
+    private $usuario = USERNAME;
+    private $password = PASSWORD;
+    private $database = DATABASE;
+    private $ssl_ca = SSL_CA;
+    private $dbh;
+    
+    public function __construct()
+    {
+        $dsn = "mysql:host={$this->host};dbname={$this->database};charset=utf8mb4";
+        $opciones = [
+            PDO::ATTR_PERSISTENT => true,
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+        ];
+        
+        if ($this->ssl_ca) {
+            $opciones[PDO::MYSQL_ATTR_SSL_CA] = $this->ssl_ca;
+        }
+        
+        $this->dbh = new PDO($dsn, $this->usuario, $this->password, $opciones);
+    }
+}
+```
+
+<Note>
+The connection uses UTF-8 encoding (utf8mb4) and persistent connections for better performance.
+</Note>
+
+## SSL Configuration
+
+For database connections over SSL, specify the certificate path:
+
+```php Config/configurar.user.php
+define("SSL_CA", "/path/to/ca-cert.pem");
+```
+
+For HTTPS website configuration, the `is_ssl()` function handles protocol detection:
+
+```php
+// Force HTTPS
+is_ssl(true);
+
+// Force HTTP
+is_ssl(false);
+
+// Auto-detect based on server variables
+is_ssl(null);
+```
+
+## Troubleshooting
+
+### 404 Errors on All Pages
+
+**Problem:** Clicking any link returns 404 errors.
+
+**Solution:** 
+- Verify mod_rewrite is enabled: `apache2ctl -M | grep rewrite`
+- Check `.htaccess` RewriteBase matches your installation path
+- Ensure Apache AllowOverride is set to All in your virtual host configuration
+
+### Database Connection Failed
+
+**Problem:** "Database connection failed" error on homepage.
+
+**Solution:**
+- Verify database credentials in `Config/configurar.user.php`
+- Check database server is running: `sudo systemctl status mysql`
+- Ensure PDO_MYSQL extension is enabled: `php -m | grep pdo_mysql`
+
+### Blank White Page
+
+**Problem:** Page loads but shows nothing.
+
+**Solution:**
+- Enable error reporting temporarily in `index.php`:
+  ```php
+  error_reporting(E_ALL);
+  ini_set('display_errors', 1);
+  ```
+- Check PHP error logs
+- Verify file permissions
+
+### RUTA_URL Incorrect
+
+**Problem:** CSS/JS files not loading, incorrect URLs generated.
+
+**Solution:**
+- Verify `LOCALDIR` in `configurar.user.php` matches your installation directory
+- Check `is_ssl()` configuration matches your server protocol
+
+## Next Steps
+
+Now that SwiftFusePHP is installed, you're ready to build your first application:
+
+<Card title="Quickstart Tutorial" icon="rocket" href="/quickstart">
+  Build your first SwiftFusePHP application in minutes
+</Card>
+
+## Additional Resources
+
+- [Framework Architecture](#) - Learn about MVC pattern in SwiftFusePHP
+- [Routing System](#) - Understand URL routing and controllers
+- [Database Operations](#) - Master the Conexion class and models

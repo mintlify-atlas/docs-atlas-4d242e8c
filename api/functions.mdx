@@ -1,0 +1,719 @@
+---
+title: 'Global Functions'
+description: 'Helper functions available throughout SwiftFusePHP'
+icon: 'function'
+---
+
+## Overview
+
+SwiftFusePHP provides a comprehensive set of global helper functions for common tasks like input validation, file handling, error management, and utilities. These functions are available throughout your application.
+
+## Location
+
+```
+Config/configurar.php
+```
+
+## Configuration
+
+### is_ssl()
+
+Configures SSL/HTTPS settings and defines URL constants.
+
+```php
+function is_ssl(bool|null $forceSSL): void
+```
+
+<ParamField path="forceSSL" type="bool|null" required>
+  - `true` - Force HTTPS
+  - `false` - Force HTTP
+  - `null` - Auto-detect protocol
+</ParamField>
+
+**Defines Constants:**
+- `IS_SSL` - Boolean indicating if HTTPS is enabled
+- `RUTA_URL` - Base URL of the application
+- `ERROR404`, `ERROR403`, `ERROR400` - Error page URLs
+- `DESARROLLO`, `MANTENIMIENTO` - Special page URLs
+
+**Example:**
+
+```php
+// Force HTTPS
+is_ssl(true);
+echo RUTA_URL; // https://example.com/
+
+// Auto-detect
+is_ssl(null);
+if (IS_SSL) {
+    echo "Secure connection";
+}
+```
+
+## Error Handling
+
+### error()
+
+Redirects to an error page and terminates execution.
+
+```php
+function error(int $code, bool $isRedirect = true): void
+```
+
+<ParamField path="code" type="int" required>
+  HTTP status code
+  - `400` - Bad Request
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `501` - Development Mode
+  - `503` - Maintenance/Service Unavailable
+</ParamField>
+
+<ParamField path="isRedirect" type="bool" default="true">
+  - `true` - HTTP redirect to error page
+  - `false` - Include error view directly
+</ParamField>
+
+**Example:**
+
+```php
+// Redirect to 404 page
+error(404);
+
+// Show 403 error inline
+error(403, false);
+
+// In controller
+if (!$usuario) {
+    error(404);
+}
+```
+
+### setStatusCode()
+
+Sets the HTTP response status code.
+
+```php
+function setStatusCode(int $code): void
+```
+
+<ParamField path="code" type="int" required>
+  HTTP status code (100-511)
+</ParamField>
+
+**Example:**
+
+```php
+setStatusCode(201); // Created
+setStatusCode(204); // No Content
+setStatusCode(500); // Internal Server Error
+```
+
+## Input Validation
+
+### filterINPUT()
+
+Sanitizes and validates user input, preventing XSS attacks.
+
+```php
+function filterINPUT(string $string): string|null
+```
+
+<ParamField path="string" type="string" required>
+  Input string to filter
+</ParamField>
+
+**Returns:**
+<ResponseField name="filtered" type="string|null">
+  - Sanitized string
+  - `null` if input is empty or "null"
+  - Triggers 400 error if HTML tags detected
+</ResponseField>
+
+**Security Features:**
+- Trims whitespace
+- Detects HTML tags and script injection attempts
+- Converts "null" string to actual null
+- Blocks semicolons and angle brackets
+
+**Example:**
+
+```php
+$nombre = filterINPUT($_POST['nombre']);
+$email = filterINPUT($_POST['email']);
+
+if ($nombre === null) {
+    echo "Name is required";
+}
+
+// Security check
+$malicious = filterINPUT("<script>alert('xss')</script>");
+// Triggers error(400) - execution stops
+```
+
+### isEmail()
+
+Validates if a string is a valid email address.
+
+```php
+function isEmail(string $text): bool
+```
+
+<ParamField path="text" type="string" required>
+  String to validate as email
+</ParamField>
+
+**Returns:**
+<ResponseField name="valid" type="bool">
+  `true` if valid email, `false` otherwise
+</ResponseField>
+
+**Example:**
+
+```php
+if (isEmail('usuario@example.com')) {
+    echo "Valid email";
+}
+
+if (!isEmail('invalid.email')) {
+    echo "Invalid email format";
+}
+
+// In validation
+$email = filterINPUT($_POST['email']);
+if (!isEmail($email)) {
+    $this->retorno['mensaje'] = "Email inválido";
+    $this->retornar();
+}
+```
+
+## File Operations
+
+### saveImg()
+
+Saves uploaded images with automatic compression and optimization.
+
+```php
+function saveImg(array $imgs, string $relativePath, array $nameImgs = []): array|false
+```
+
+<ParamField path="imgs" type="array" required>
+  `$_FILES` array containing image data
+</ParamField>
+
+<ParamField path="relativePath" type="string" required>
+  Relative path where images will be stored (from RUTA_APP)
+</ParamField>
+
+<ParamField path="nameImgs" type="array" default="[]">
+  Custom filenames. If empty, random names are generated
+</ParamField>
+
+**Returns:**
+<ResponseField name="filenames" type="array|false">
+  Array of saved filenames, or `false` on failure
+</ResponseField>
+
+**Features:**
+- Supports JPEG, PNG, GIF, WebP formats
+- Automatic compression for images >1280px or >100KB
+- Maintains aspect ratio
+- Preserves PNG transparency
+- Validates image types using `getimagesize()`
+- Creates directories automatically
+
+**Example:**
+
+```php
+// Single image
+if (isset($_FILES['foto'])) {
+    $nombres = saveImg($_FILES['foto'], 'Archivos/usuarios');
+    if ($nombres) {
+        $fotoPath = $nombres[0];
+        echo "Imagen guardada: {$fotoPath}";
+    }
+}
+
+// Multiple images
+if (isset($_FILES['imagenes'])) {
+    $nombres = saveImg($_FILES['imagenes'], 'Archivos/productos', ['img1.jpg', 'img2.jpg']);
+    foreach ($nombres as $nombre) {
+        echo "Guardado: {$nombre}<br>";
+    }
+}
+
+// In a model
+public function insertarProducto($datos, $imagen) {
+    $rutaImagen = saveImg($imagen, 'Archivos/productos');
+    if (!$rutaImagen) {
+        $this->mensaje = "Error al guardar imagen";
+        return false;
+    }
+    
+    $nombreArchivo = $rutaImagen[0];
+    // Save to database...
+}
+```
+
+### saveFile()
+
+Saves uploaded files with automatic PDF compression.
+
+```php
+function saveFile(array $files, string $relativePath, array $nameFiles = []): array|false
+```
+
+<ParamField path="files" type="array" required>
+  `$_FILES` array containing file data
+</ParamField>
+
+<ParamField path="relativePath" type="string" required>
+  Relative path where files will be stored
+</ParamField>
+
+<ParamField path="nameFiles" type="array" default="[]">
+  Custom filenames. If empty, random names are generated
+</ParamField>
+
+**Returns:**
+<ResponseField name="filenames" type="array|false">
+  Array of saved filenames, or `false` on failure
+</ResponseField>
+
+**Features:**
+- Accepts any file type
+- Automatic PDF compression (if compression script available)
+- Creates directories automatically
+- Generates unique random filenames
+
+**Example:**
+
+```php
+// Save document
+if (isset($_FILES['documento'])) {
+    $archivos = saveFile($_FILES['documento'], 'Archivos/documentos');
+    if ($archivos) {
+        echo "Archivo guardado: " . $archivos[0];
+    }
+}
+
+// Multiple files with custom names
+$nombres = saveFile(
+    $_FILES['adjuntos'],
+    'Archivos/reportes',
+    ['reporte_2024.pdf', 'anexo_a.docx']
+);
+```
+
+### mkdirs()
+
+Creates directories and subdirectories recursively.
+
+```php
+function mkdirs(string $relativePath): void
+```
+
+<ParamField path="relativePath" type="string" required>
+  Relative path to create (from RUTA_APP)
+</ParamField>
+
+**Example:**
+
+```php
+mkdirs('Archivos/usuarios/fotos');
+// Creates: RUTA_APP/Archivos/usuarios/fotos/
+
+mkdirs('Vista/admin/reportes');
+```
+
+### rmdir_r()
+
+Deletes a directory and all its contents recursively.
+
+```php
+function rmdir_r(string $relativePath): void
+```
+
+<ParamField path="relativePath" type="string" required>
+  Relative path to delete
+</ParamField>
+
+**Example:**
+
+```php
+// Delete entire directory
+rmdir_r('Archivos/temp');
+
+// Clean user uploads
+rmdir_r('Archivos/usuarios/' . $userId);
+```
+
+<Warning>
+  This function permanently deletes files and directories. Use with caution!
+</Warning>
+
+## Date and Time
+
+### getDateInSpanish()
+
+Formats dates in Spanish.
+
+```php
+function getDateInSpanish(string $date = 'now'): string
+```
+
+<ParamField path="date" type="string" default="'now'">
+  Date string parseable by DateTime
+</ParamField>
+
+**Returns:**
+<ResponseField name="formatted" type="string">
+  Date formatted as "d de MMMM de y" in Spanish
+</ResponseField>
+
+**Example:**
+
+```php
+echo getDateInSpanish(); 
+// "4 de marzo de 2026"
+
+echo getDateInSpanish('2024-12-25');
+// "25 de diciembre de 2024"
+
+echo getDateInSpanish('next monday');
+// "10 de marzo de 2026"
+```
+
+### getMonthInSpanish()
+
+Returns Spanish month name from index.
+
+```php
+function getMonthInSpanish(int $index): string
+```
+
+<ParamField path="index" type="int" required>
+  Month index (0-11)
+</ParamField>
+
+**Returns:**
+<ResponseField name="month" type="string">
+  Month name in Spanish
+</ResponseField>
+
+**Example:**
+
+```php
+echo getMonthInSpanish(0);  // "Enero"
+echo getMonthInSpanish(5);  // "Junio"
+echo getMonthInSpanish(11); // "Diciembre"
+
+// Get current month
+$monthIndex = (int)date('m') - 1;
+echo getMonthInSpanish($monthIndex);
+```
+
+## String Utilities
+
+### stringWithQuotationMark()
+
+Wraps string in single quotes and escapes special characters. Converts null to "null" text.
+
+```php
+function stringWithQuotationMark(string|null $string): string
+```
+
+<ParamField path="string" type="string|null" required>
+  String to wrap in quotes
+</ParamField>
+
+**Returns:**
+<ResponseField name="quoted" type="string">
+  String wrapped in quotes with escaped characters, or "null"
+</ResponseField>
+
+**Example:**
+
+```php
+echo stringWithQuotationMark("Hello");
+// 'Hello'
+
+echo stringWithQuotationMark("It's here");
+// 'It\'s here'
+
+echo stringWithQuotationMark(null);
+// null
+
+// For SQL (prefer prepared statements instead)
+$sql = "INSERT INTO table (name) VALUES (" . stringWithQuotationMark($name) . ")";
+```
+
+### formatCurrency()
+
+Formats numbers as currency strings.
+
+```php
+function formatCurrency(int|float $number, string $icon = "💲"): string
+```
+
+<ParamField path="number" type="int|float" required>
+  Number to format
+</ParamField>
+
+<ParamField path="icon" type="string" default="💲">
+  Currency symbol or icon
+</ParamField>
+
+**Returns:**
+<ResponseField name="formatted" type="string">
+  Formatted currency string with thousands separators
+</ResponseField>
+
+**Example:**
+
+```php
+echo formatCurrency(1234567);
+// "💲 1.234.567"
+
+echo formatCurrency(999.50, "$");
+// "$ 1.000"
+
+echo formatCurrency(500, "€");
+// "€ 500"
+```
+
+## Numeric Utilities
+
+### nullToZero()
+
+Converts null values to zero.
+
+```php
+function nullToZero(mixed $value): int
+```
+
+<ParamField path="value" type="mixed" required>
+  Value to check
+</ParamField>
+
+**Returns:**
+<ResponseField name="result" type="int">
+  Original value or 0 if null
+</ResponseField>
+
+**Example:**
+
+```php
+$cantidad = nullToZero($producto->cantidad);
+// If null: returns 0
+// If 5: returns 5
+
+$total = nullToZero($pedido->total) + nullToZero($pedido->impuesto);
+```
+
+## Application Control
+
+### suspend()
+
+Suspends access to the application (maintenance mode).
+
+```php
+function suspend(bool $isForced = true): void
+```
+
+<ParamField path="isForced" type="bool" default="true">
+  - `true` - Suspend only if user not logged in
+  - `false` - Suspend for everyone
+</ParamField>
+
+**Behavior:**
+- Sets `$_SESSION['suspend']` flag
+- Redirects to 503 error page
+- Can be toggled on/off
+
+**Example:**
+
+```php
+// In index.php or controller
+suspend(); // Maintenance mode (allows logged-in users)
+
+suspend(false); // Full maintenance mode (all users)
+
+// Toggle suspension
+suspend(false); // Suspends
+suspend(false); // Removes suspension
+```
+
+## Security & Validation
+
+### validarToken()
+
+Validates Google reCAPTCHA v3 token.
+
+```php
+function validarToken(string $typeAction): bool
+```
+
+<ParamField path="typeAction" type="string" required>
+  Expected action type to validate
+</ParamField>
+
+**Expects POST Data:**
+- `$_POST['token']` - reCAPTCHA token
+- `$_POST['action']` - Action name
+
+**Returns:**
+<ResponseField name="valid" type="bool">
+  `true` if token is valid and score > 0.5, `false` otherwise
+</ResponseField>
+
+**Example:**
+
+```php
+// In controller
+if (!validarToken('login')) {
+    $this->retorno['mensaje'] = "Validación reCAPTCHA fallida";
+    $this->retorno['exito'] = false;
+    $this->retornar();
+}
+
+// Process login...
+```
+
+**Frontend Setup:**
+
+```javascript
+greCAPTCHA.ready(function() {
+    grecaptcha.execute('YOUR_SITE_KEY', {action: 'login'})
+    .then(function(token) {
+        document.getElementById('token').value = token;
+        document.getElementById('action').value = 'login';
+    });
+});
+```
+
+## Advanced File Handling
+
+### filesToCURLFiles()
+
+Converts `$_FILES` to CURLFile objects for cURL requests.
+
+```php
+function filesToCURLFiles(): array
+```
+
+**Returns:**
+<ResponseField name="files" type="array">
+  Array of CURLFile objects
+</ResponseField>
+
+**Example:**
+
+```php
+// Forward uploaded files to another API
+$files = filesToCURLFiles();
+
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, 'https://api.example.com/upload');
+curl_setopt($ch, CURLOPT_POST, 1);
+curl_setopt($ch, CURLOPT_POSTFIELDS, array_merge($_POST, $files));
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+$response = curl_exec($ch);
+curl_close($ch);
+```
+
+## Constants
+
+### VERSION_SWIFTFUSEPHP
+
+Framework version constant.
+
+```php
+define("VERSION_SWIFTFUSEPHP", "0.9.3");
+```
+
+**Example:**
+
+```php
+echo "Running SwiftFusePHP " . VERSION_SWIFTFUSEPHP;
+```
+
+### RUTA_APP
+
+Absolute path to the application root.
+
+```php
+define("RUTA_APP", dirname(dirname(__FILE__)) . "/");
+```
+
+**Example:**
+
+```php
+require_once RUTA_APP . "Libreria/Core.php";
+
+$archivo = RUTA_APP . "Archivos/datos.json";
+```
+
+## Usage Patterns
+
+<AccordionGroup>
+  <Accordion title="Form Processing">
+    ```php
+    // Validate and sanitize form input
+    $nombre = filterINPUT($_POST['nombre']);
+    $email = filterINPUT($_POST['email']);
+    
+    if (!isEmail($email)) {
+        error(400);
+    }
+    
+    // Process files
+    $foto = saveImg($_FILES['foto'], 'Archivos/usuarios');
+    if (!$foto) {
+        echo "Error al subir foto";
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Error Handling Pattern">
+    ```php
+    try {
+        $resultado = $modelo->operacion();
+        
+        if (!$resultado) {
+            error(400);
+        }
+        
+        setStatusCode(201);
+        echo "Success";
+        
+    } catch (Exception $e) {
+        error_log($e->getMessage());
+        error(500);
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="File Upload Pattern">
+    ```php
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        mkdirs('Archivos/uploads');
+        
+        $imagenes = saveImg($_FILES['imagenes'], 'Archivos/uploads');
+        $documentos = saveFile($_FILES['documentos'], 'Archivos/uploads');
+        
+        if ($imagenes && $documentos) {
+            // Save to database
+            $modelo->guardarArchivos($imagenes, $documentos);
+        }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [Controlador](/api/controlador) - Using functions in controllers
+- [Model](/api/model) - Using functions in models
+- [Configuration](/configuration) - Application setup

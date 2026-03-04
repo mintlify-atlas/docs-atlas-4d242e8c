@@ -1,0 +1,384 @@
+---
+title: URL Routing
+description: Understanding SwiftFusePHP's URL routing system and how requests are mapped to controllers
+---
+
+## Overview
+
+SwiftFusePHP uses a **convention-based routing system** powered by the `Core` class. URLs are automatically parsed and mapped to controllers, methods, and parameters without requiring manual route definitions.
+
+## URL Structure
+
+SwiftFusePHP URLs follow a predictable pattern:
+
+```
+http://example.com/[controller]/[method-or-view]/[param1]/[param2]/...
+```
+
+### URL Components
+
+<ParamField path="controller" type="string" default="Inicio">
+  The controller name (capitalized). Maps to `Controlador/{Controller}_Controller.php`
+</ParamField>
+
+<ParamField path="method-or-view" type="string" default="cargaVista">
+  Either a controller method name or a view file name
+</ParamField>
+
+<ParamField path="parameters" type="array" default="[]">
+  Additional URL segments passed as parameters
+</ParamField>
+
+## How Routing Works
+
+The `Core` class (Libreria/Core.php) handles all routing logic in its constructor.
+
+### Step 1: URL Parsing
+
+The `getUrl()` method extracts the URL from `$_GET['url']`:
+
+<CodeGroup>
+```php Core.php (Lines 58-65)
+private function getUrl()
+{
+    if (isset($_GET["url"])) {
+        $url = rtrim($_GET["url"], '/');
+        $url = explode('/', $url);
+        return $url;
+    }
+}
+```
+</CodeGroup>
+
+**Example:**
+```
+URL: http://example.com/person/list/5
+
+Result: ["person", "list", "5"]
+```
+
+### Step 2: Controller Resolution
+
+The Core attempts to load a controller based on `$url[0]`:
+
+<CodeGroup>
+```php Core.php (Lines 16-24)
+if (file_exists("Controlador/" . ucwords($url[0] . "_Controller.php"))) {
+    $this->controladorActual = ucwords($url[0]);
+    unset($url[0]);
+} else if (isset($url[0])) {
+    error(404); // Controller not found
+}
+```
+</CodeGroup>
+
+<Note>
+If `$url[0]` is not provided or the controller doesn't exist, it defaults to the `Inicio` controller or triggers a 404 error.
+</Note>
+
+### Step 3: Method or View Detection
+
+The Core checks if `$url[1]` is a method name or view name:
+
+<CodeGroup>
+```php Core.php (Lines 31-39)
+if (isset($url[1])) {
+    if (method_exists($this->controladorActual, $url[1])) {
+        // It's a method
+        $this->metodoActual = $url[1];
+    } else {
+        // It's a view
+        $this->vista = $url[1];
+    }
+    unset($url[1]);
+}
+```
+</CodeGroup>
+
+<Tabs>
+  <Tab title="Method Exists">
+    If `$url[1]` matches a method in the controller:
+    
+    ```php
+    // URL: /person/list
+    // Calls: PersonControl->list($vista, $parametros)
+    ```
+  </Tab>
+  
+  <Tab title="Method Doesn't Exist">
+    If `$url[1]` doesn't match a method:
+    
+    ```php
+    // URL: /inicio/contact
+    // Calls: InicioControl->cargaVista("contact", $parametros)
+    // Loads: Vista/inicio/contact_View.php
+    ```
+  </Tab>
+</Tabs>
+
+### Step 4: Parameter Collection
+
+All remaining URL segments become parameters:
+
+<CodeGroup>
+```php Core.php (Line 41)
+$this->parametros = $url ? array_values($url) : [];
+```
+</CodeGroup>
+
+**Example:**
+```
+URL: /person/update/5/john
+
+Parameters: ["5", "john"]
+```
+
+### Step 5: Method Invocation
+
+Finally, the controller method is called with the view name and parameters:
+
+<CodeGroup>
+```php Core.php (Line 43)
+call_user_func_array(
+    [$this->controladorActual, $this->metodoActual],
+    [$this->vista, $this->parametros]
+);
+```
+</CodeGroup>
+
+## Routing Examples
+
+### Example 1: Home Page
+
+```
+URL: http://example.com/
+```
+
+<Steps>
+  <Step title="Parse URL">
+    `$url` is empty/null
+  </Step>
+  <Step title="Default Controller">
+    Loads `Controlador/Inicio_Controller.php`
+  </Step>
+  <Step title="Default Method">
+    Calls `cargaVista("index", [])`
+  </Step>
+  <Step title="Load View">
+    Renders `Vista/inicio/index_View.php`
+  </Step>
+</Steps>
+
+### Example 2: Controller Method
+
+```
+URL: http://example.com/person/list
+```
+
+<Steps>
+  <Step title="Parse URL">
+    `["person", "list"]`
+  </Step>
+  <Step title="Load Controller">
+    Loads `Controlador/Person_Controller.php` → `PersonControl`
+  </Step>
+  <Step title="Check Method">
+    `list()` method exists in `PersonControl`
+  </Step>
+  <Step title="Execute Method">
+    Calls `PersonControl->list("index", [])`
+  </Step>
+</Steps>
+
+<CodeGroup>
+```php Person_Controller.php
+class PersonControl extends Controlador
+{
+    public function list(){
+        $data = $this->Person->getAll();
+        $this->retorno["exito"] = true;
+        $this->retorno["data"] = $data;
+        $this->retornar(); // Returns JSON
+    }
+}
+```
+</CodeGroup>
+
+### Example 3: Custom View
+
+```
+URL: http://example.com/inicio/contact
+```
+
+<Steps>
+  <Step title="Parse URL">
+    `["inicio", "contact"]`
+  </Step>
+  <Step title="Load Controller">
+    Loads `Controlador/Inicio_Controller.php`
+  </Step>
+  <Step title="Check Method">
+    `contact()` method doesn't exist
+  </Step>
+  <Step title="Load View">
+    Calls `cargaVista("contact", [])`
+    
+    Renders `Vista/inicio/contact_View.php`
+  </Step>
+</Steps>
+
+### Example 4: With Parameters
+
+```
+URL: http://example.com/user/profile/42/edit
+```
+
+<Steps>
+  <Step title="Parse URL">
+    `["user", "profile", "42", "edit"]`
+  </Step>
+  <Step title="Load Controller">
+    `UserControl`
+  </Step>
+  <Step title="Execute Method">
+    Calls `profile("index", ["42", "edit"])`
+  </Step>
+</Steps>
+
+<CodeGroup>
+```php Accessing Parameters
+public function profile($vista, $parametros)
+{
+    $userId = $parametros[0]; // "42"
+    $action = $parametros[1]; // "edit"
+    
+    // Use the parameters...
+}
+```
+</CodeGroup>
+
+## Default Values
+
+The `Core` class defines sensible defaults:
+
+<CodeGroup>
+```php Core.php (Lines 8-11)
+protected $controladorActual = "Inicio";
+protected $metodoActual = "cargaVista";
+protected $vista = "index";
+protected $parametros = [];
+```
+</CodeGroup>
+
+| Property | Default | Purpose |
+|----------|---------|----------|
+| `$controladorActual` | `"Inicio"` | Default controller when URL is empty |
+| `$metodoActual` | `"cargaVista"` | Default method to call |
+| `$vista` | `"index"` | Default view to render |
+| `$parametros` | `[]` | Parameters array |
+
+## Error Handling
+
+### 404 - Controller Not Found
+
+When a controller file doesn't exist:
+
+<CodeGroup>
+```php Core.php (Lines 21-23)
+else if(isset($url[0])){
+    error(404);
+}
+```
+</CodeGroup>
+
+**Example:**
+```
+URL: http://example.com/nonexistent
+
+Result: Calls error(404) function
+```
+
+### 404 - View Not Found
+
+When a view file doesn't exist, the `cargaVista()` method in the controller triggers a 404:
+
+<CodeGroup>
+```php Controlador.php (Lines 23-29)
+public function cargaVista($archivo, $data){
+    if(count($data) == 0 ){
+        $this->vista($this->folder . '/' . lcfirst($archivo), $data);
+    }else{
+        error(404); // Parameters not allowed for simple views
+    }
+}
+```
+</CodeGroup>
+
+## .htaccess Configuration
+
+SwiftFusePHP requires URL rewriting to work. Your `.htaccess` should contain:
+
+<CodeGroup>
+```apache .htaccess
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php?url=$1 [QSA,L]
+```
+</CodeGroup>
+
+This rewrites all requests to `index.php?url=...` which the `Core` class then parses.
+
+## Best Practices
+
+<Tip>
+**Keep URLs RESTful and predictable:**
+
+- `GET /product/list` - List all products
+- `GET /product/view/5` - View product #5
+- `POST /product/create` - Create new product
+- `POST /product/update/5` - Update product #5
+- `POST /product/delete/5` - Delete product #5
+</Tip>
+
+<Warning>
+**Avoid excessive parameters in URLs**
+
+More than 3-4 parameters makes URLs hard to read. Consider using POST data or query strings instead.
+</Warning>
+
+## Advanced: Custom Routing Logic
+
+To add custom routing logic, you can:
+
+1. Extend the `Core` class
+2. Override the `getUrl()` method
+3. Add custom URL pattern matching
+
+<CodeGroup>
+```php Custom Core Example
+class CustomCore extends Core
+{
+    protected function getUrl()
+    {
+        $url = parent::getUrl();
+        
+        // Add custom routing logic here
+        // e.g., handle /api/* differently
+        
+        return $url;
+    }
+}
+```
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Controllers" icon="gamepad" href="/controllers">
+    Learn how to create controllers that handle routed requests
+  </Card>
+  <Card title="Views" icon="eye" href="/views">
+    Render views based on routing
+  </Card>
+</CardGroup>

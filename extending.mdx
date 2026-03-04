@@ -1,0 +1,693 @@
+---
+title: 'Extending the Framework'
+description: 'Learn how to extend SwiftFusePHP base classes and customize framework behavior'
+---
+
+## Overview
+
+SwiftFusePHP is designed to be extensible. The framework provides abstract base classes that you can extend to build your application's controllers and models. This guide covers how to properly extend the framework and add custom functionality.
+
+## Directory Structure Requirements
+
+SwiftFusePHP requires a specific directory structure to function properly:
+
+```
+SwiftFusePHP/
+├── Archivos/           # File storage and uploads
+├── Config/             # Configuration files
+│   ├── configurar.php
+│   └── configurar.user.php
+├── Controlador/        # Controllers (required)
+├── Errores/            # Error logs
+│   └── log.php
+├── Includ/             # Shared includes (header, footer)
+├── Libreria/           # Framework core classes
+│   ├── Controlador.php
+│   ├── Controlador.user.php
+│   └── Core.php
+├── Modelo/             # Models (required)
+│   ├── Conexion_Model.php
+│   ├── Model_Abstract.php
+│   └── Entidad/        # Entity classes
+├── Vista/              # Views (required)
+│   ├── error/          # Error pages
+│   └── inicio/         # Default home views
+├── .htaccess
+└── index.php
+```
+
+<Warning>
+The `Controlador/`, `Modelo/`, and `Vista/` directories are required. The framework will throw errors if these directories don't exist.
+</Warning>
+
+## Extending Controllers
+
+### Base Controller Class
+
+All controllers extend the `Controlador` abstract class, which provides core functionality.
+
+**Location:** `Libreria/Controlador.php`
+
+### Controller Naming Convention
+
+Controllers must follow this naming pattern:
+- **File name:** `{Name}_Controller.php`
+- **Class name:** `{Name}Control`
+- **Location:** `Controlador/` directory
+
+### Creating a Basic Controller
+
+```php
+<?php
+// File: Controlador/Products_Controller.php
+
+class ProductsControl extends Controlador
+{
+    protected $folder = "products";
+}
+```
+
+**URL Mapping:**
+- `http://yoursite.com/Products` → Loads `Vista/products/index_View.php`
+- `http://yoursite.com/Products/details` → Loads `Vista/products/details_View.php`
+
+### Controller with Model Injection
+
+```php
+<?php
+// File: Controlador/Person_Controller.php
+
+class PersonControl extends Controlador
+{
+    private $Person;
+
+    public function __construct()
+    {
+        // Load the Person model
+        $this->Person = $this->modelo("Person");
+    }
+
+    public function list()
+    {
+        $data = $this->Person->getAll();
+        
+        if (count($data) > 0) {
+            $this->retorno["exito"] = true;
+            $this->retorno["data"] = $data;
+        } else {
+            $this->retorno["mensaje"] = $this->Person->getMensaje();
+        }
+        
+        $this->retornar();
+    }
+}
+```
+
+**URL:** `http://yoursite.com/Person/list`
+
+### Controller Methods
+
+#### Protected Properties
+
+```php
+protected $retorno = array(
+    "mensaje" => null,
+    "exito" => false,
+    "data" => null
+);
+protected $folder = ""; // Vista subdirectory
+```
+
+#### modelo($modelo)
+
+Loads and instantiates a model.
+
+```php
+public function modelo($modelo)
+```
+
+**Example:**
+```php
+$this->User = $this->modelo("Usuario");
+$this->Product = $this->modelo("Products/Product"); // Nested models
+```
+
+#### vista($vista, $parametro = [])
+
+Renders a view file. Supports both `.php` and `.html` extensions.
+
+```php
+public function vista($vista, $parametro = [])
+```
+
+**Examples:**
+```php
+// Load Vista/products/list_View.php
+$this->vista("products/list", ["items" => $products]);
+
+// Access in view
+foreach ($parametro['items'] as $item) {
+    echo $item['name'];
+}
+```
+
+#### cargaVista($archivo, $data)
+
+Default method called when a view is requested. Override this to customize view loading.
+
+```php
+public function cargaVista($archivo, $data)
+{
+    if (count($data) == 0) {
+        $this->vista($this->folder . '/' . lcfirst($archivo), $data);
+    } else {
+        error(404);
+    }
+}
+```
+
+**Override Example:**
+```php
+public function cargaVista($archivo, $data)
+{
+    // Check authentication
+    if (!isset($_SESSION['user'])) {
+        header("Location: " . RUTA_URL . "Login");
+        die();
+    }
+    
+    // Custom view loading logic
+    $this->vista($this->folder . '/' . lcfirst($archivo), $data);
+}
+```
+
+#### retornar()
+
+Outputs the `$retorno` array as JSON and terminates execution.
+
+```php
+protected function retornar()
+```
+
+**Usage for AJAX endpoints:**
+```php
+public function save()
+{
+    $result = $this->Product->create($_POST);
+    
+    if ($result) {
+        $this->retorno['exito'] = true;
+        $this->retorno['mensaje'] = "Product created successfully";
+    } else {
+        $this->retorno['mensaje'] = "Failed to create product";
+    }
+    
+    $this->retornar(); // Outputs JSON and exits
+}
+```
+
+### Extending Controlador.user.php
+
+Add custom methods available to all controllers by extending `ControladorUser`.
+
+**Location:** `Libreria/Controlador.user.php`
+
+```php
+<?php
+// Libreria/Controlador.user.php
+
+abstract class ControladorUser
+{
+    /**
+     * Check if user is authenticated
+     */
+    protected function requireAuth()
+    {
+        if (!isset($_SESSION['user'])) {
+            error(403);
+        }
+    }
+    
+    /**
+     * Check if user has specific role
+     */
+    protected function requireRole($role)
+    {
+        if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== $role) {
+            error(403);
+        }
+    }
+    
+    /**
+     * Get current logged-in user
+     */
+    protected function getCurrentUser()
+    {
+        return $_SESSION['user'] ?? null;
+    }
+    
+    /**
+     * Set flash message
+     */
+    protected function setFlash($message, $type = 'info')
+    {
+        $_SESSION['flash'] = [
+            'message' => $message,
+            'type' => $type
+        ];
+    }
+    
+    /**
+     * Validate CSRF token
+     */
+    protected function validateCSRF($token)
+    {
+        if (!isset($_SESSION['csrf_token']) || $_SESSION['csrf_token'] !== $token) {
+            error(400);
+        }
+    }
+}
+```
+
+**Using in Controllers:**
+```php
+class AdminControl extends Controlador
+{
+    public function dashboard($view, $params)
+    {
+        $this->requireAuth();
+        $this->requireRole('admin');
+        
+        $user = $this->getCurrentUser();
+        $this->vista('admin/dashboard', ['user' => $user]);
+    }
+}
+```
+
+## Extending Models
+
+### Base Model Class
+
+All models extend the `Model` abstract class.
+
+**Location:** `Modelo/Model_Abstract.php`
+
+### Model Naming Convention
+
+- **File name:** `{Name}_Model.php`
+- **Class name:** `{Name}Mode`
+- **Location:** `Modelo/` directory
+
+### Creating a Basic Model
+
+```php
+<?php
+// File: Modelo/Person_Model.php
+
+require_once RUTA_APP . "Modelo/Model_Abstract.php";
+require_once RUTA_APP . "Modelo/Entidad/Person_Entity.php";
+
+class PersonMode extends Model
+{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->entidad = new Person;
+    }
+
+    public function getAll()
+    {
+        $data = array();
+        try {
+            $this->Conexion->query("CALL PR_getAllPeople();");
+            
+            if ($this->Conexion->getRecord() == 0) {
+                $this->mensaje = "No people found";
+            } else {
+                $data = $this->Conexion->getsArray();
+            }
+        } catch (PDOException $ex) {
+            $this->mensaje = $ex->getMessage();
+        }
+        return $data;
+    }
+}
+```
+
+### Model Properties
+
+```php
+protected $Conexion; // Database connection instance
+protected $mensaje = null; // Error/status message
+protected $entidad; // Entity object
+```
+
+### Model Methods
+
+#### getMensaje()
+
+Returns the current message (error or status).
+
+```php
+public function getMensaje()
+```
+
+**Usage:**
+```php
+$users = $this->User->getAll();
+if (empty($users)) {
+    echo $this->User->getMensaje();
+}
+```
+
+#### getEntidad()
+
+Returns the entity object.
+
+```php
+public function getEntidad()
+```
+
+### CRUD Operations Example
+
+```php
+<?php
+require_once RUTA_APP . "Modelo/Model_Abstract.php";
+require_once RUTA_APP . "Modelo/Entidad/Usuario_Entity.php";
+
+class UsuarioMode extends Model
+{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->entidad = new Usuario;
+    }
+
+    public function getAll()
+    {
+        $users = array();
+        try {
+            $this->Conexion->query("SELECT * FROM usuarios;");
+            $users = $this->Conexion->getsArray();
+        } catch (PDOException $ex) {
+            $this->mensaje = $ex->getMessage();
+        }
+        return $users;
+    }
+    
+    public function getById($id)
+    {
+        try {
+            $this->Conexion->query("SELECT * FROM usuarios WHERE id = :id");
+            $this->Conexion->bind(':id', $id);
+            return $this->Conexion->getArray();
+        } catch (PDOException $ex) {
+            $this->mensaje = $ex->getMessage();
+            return null;
+        }
+    }
+    
+    public function create($data)
+    {
+        try {
+            $sql = "INSERT INTO usuarios (nombre, email, password) 
+                    VALUES (:nombre, :email, :password)";
+            $this->Conexion->query($sql);
+            $this->Conexion->bind(':nombre', $data['nombre']);
+            $this->Conexion->bind(':email', $data['email']);
+            $this->Conexion->bind(':password', password_hash($data['password'], PASSWORD_DEFAULT));
+            
+            if ($this->Conexion->execute()) {
+                $this->mensaje = "User created successfully";
+                return true;
+            }
+        } catch (PDOException $ex) {
+            $this->mensaje = $ex->getMessage();
+        }
+        return false;
+    }
+    
+    public function update($id, $data)
+    {
+        try {
+            $sql = "UPDATE usuarios SET nombre = :nombre, email = :email 
+                    WHERE id = :id";
+            $this->Conexion->query($sql);
+            $this->Conexion->bind(':id', $id);
+            $this->Conexion->bind(':nombre', $data['nombre']);
+            $this->Conexion->bind(':email', $data['email']);
+            
+            if ($this->Conexion->execute()) {
+                $this->mensaje = "User updated successfully";
+                return true;
+            }
+        } catch (PDOException $ex) {
+            $this->mensaje = $ex->getMessage();
+        }
+        return false;
+    }
+    
+    public function delete($id)
+    {
+        try {
+            $this->Conexion->query("DELETE FROM usuarios WHERE id = :id");
+            $this->Conexion->bind(':id', $id);
+            
+            if ($this->Conexion->execute()) {
+                $this->mensaje = "User deleted successfully";
+                return true;
+            }
+        } catch (PDOException $ex) {
+            $this->mensaje = $ex->getMessage();
+        }
+        return false;
+    }
+}
+```
+
+### Using Transactions
+
+```php
+public function createWithAddress($userData, $addressData)
+{
+    try {
+        // Start transaction
+        $this->Conexion->transaction();
+        
+        // Insert user
+        $this->Conexion->query(
+            "INSERT INTO usuarios (nombre, email) VALUES (:nombre, :email)"
+        );
+        $this->Conexion->bind(':nombre', $userData['nombre']);
+        $this->Conexion->bind(':email', $userData['email']);
+        
+        if (!$this->Conexion->execute()) {
+            throw new Exception("Failed to create user");
+        }
+        
+        $userId = $this->Conexion->dbh->lastInsertId();
+        
+        // Insert address
+        $this->Conexion->query(
+            "INSERT INTO direcciones (usuario_id, calle, ciudad) 
+             VALUES (:usuario_id, :calle, :ciudad)"
+        );
+        $this->Conexion->bind(':usuario_id', $userId);
+        $this->Conexion->bind(':calle', $addressData['calle']);
+        $this->Conexion->bind(':ciudad', $addressData['ciudad']);
+        
+        if (!$this->Conexion->execute()) {
+            throw new Exception("Failed to create address");
+        }
+        
+        // Commit transaction
+        $this->Conexion->commit();
+        $this->mensaje = "User and address created successfully";
+        return true;
+        
+    } catch (Exception $ex) {
+        // Rollback on error
+        $this->Conexion->rollBack();
+        $this->mensaje = $ex->getMessage();
+        return false;
+    }
+}
+```
+
+## Creating Entity Classes
+
+Entity classes represent database table structures.
+
+**Location:** `Modelo/Entidad/`
+
+```php
+<?php
+// File: Modelo/Entidad/Usuario_Entity.php
+
+class Usuario
+{
+    private $id;
+    private $nombre;
+    private $email;
+    private $password;
+    private $created_at;
+    
+    // Getters
+    public function getId() { return $this->id; }
+    public function getNombre() { return $this->nombre; }
+    public function getEmail() { return $this->email; }
+    public function getPassword() { return $this->password; }
+    public function getCreatedAt() { return $this->created_at; }
+    
+    // Setters
+    public function setId($id) { $this->id = $id; }
+    public function setNombre($nombre) { $this->nombre = $nombre; }
+    public function setEmail($email) { $this->email = $email; }
+    public function setPassword($password) { $this->password = $password; }
+    public function setCreatedAt($created_at) { $this->created_at = $created_at; }
+    
+    // Utility methods
+    public function toArray()
+    {
+        return [
+            'id' => $this->id,
+            'nombre' => $this->nombre,
+            'email' => $this->email,
+            'created_at' => $this->created_at
+        ];
+    }
+    
+    public function fromArray($data)
+    {
+        $this->id = $data['id'] ?? null;
+        $this->nombre = $data['nombre'] ?? null;
+        $this->email = $data['email'] ?? null;
+        $this->password = $data['password'] ?? null;
+        $this->created_at = $data['created_at'] ?? null;
+        return $this;
+    }
+}
+```
+
+## Custom Error Pages
+
+SwiftFusePHP uses custom error views located in `Vista/error/`.
+
+### Required Error Views
+
+- `400_View.php` - Bad Request
+- `403_View.php` - Forbidden
+- `404_View.php` - Not Found
+- `501_View.php` - Development Mode
+- `503_View.php` - Maintenance Mode (optional)
+
+### Customizing Error Pages
+
+```php
+<?php
+// Vista/error/404_View.php
+?><!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>404 - Page Not Found</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 50px;
+        }
+        h1 { color: #e74c3c; }
+    </style>
+</head>
+<body>
+    <h1>404 - Page Not Found</h1>
+    <p>The page you're looking for doesn't exist.</p>
+    <a href="<?= RUTA_URL ?>">Go Home</a>
+</body>
+</html>
+```
+
+### Triggering Error Pages
+
+Use the `error()` function:
+
+```php
+error(404); // Triggers 404 error
+error(403); // Triggers 403 error
+error(400); // Triggers 400 error
+error(503); // Triggers maintenance mode
+error(501); // Triggers development mode
+```
+
+## .htaccess Customization
+
+### Default .htaccess Configuration
+
+```apache
+# Deny directory listing
+Options -Indexes
+
+# Deny access to specific files
+<FilesMatch "\.(htaccess|sql|git|gitignore|sh)$">
+Order Allow,Deny
+Deny from all
+</FilesMatch>
+
+# URL Rewriting
+<IfModule mod_rewrite.c>
+Options -Multiviews
+RewriteEngine On
+RewriteBase /SwiftFusePHP/
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^([-a-zA-Z0-9/(í,ú,á,ñ)]+)$ index.php?url=$1 [QSA,L]
+</IfModule>
+
+# Upload limits (uncomment if needed)
+#php_value upload_max_filesize 200M
+#php_value post_max_size 200M
+#php_value max_execution_time 1000
+#php_value max_input_time 1000
+
+ErrorDocument 404 /SwiftFusePHP/Vista/error/404_View.php
+ErrorDocument 400 /SwiftFusePHP/Vista/error/400_View.php
+```
+
+### Customization Tips
+
+**Change RewriteBase for subdirectory:**
+```apache
+RewriteBase /myapp/
+```
+
+**Force HTTPS:**
+```apache
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+```
+
+**Block specific IP addresses:**
+```apache
+<RequireAll>
+    Require all granted
+    Require not ip 123.456.789.0
+</RequireAll>
+```
+
+**Enable CORS:**
+```apache
+Header set Access-Control-Allow-Origin "*"
+Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Configure framework settings
+  </Card>
+  <Card title="Best Practices" icon="star" href="/best-practices">
+    Learn recommended patterns
+  </Card>
+</CardGroup>

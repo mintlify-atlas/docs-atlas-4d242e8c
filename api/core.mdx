@@ -1,0 +1,243 @@
+---
+title: 'Core'
+description: 'URL routing and request mapping class'
+icon: 'route'
+---
+
+## Overview
+
+The `Core` class is responsible for URL routing in SwiftFusePHP. It maps incoming URLs to controllers, methods, and views, forming the foundation of the MVC request lifecycle.
+
+## Location
+
+```
+Libreria/Core.php
+```
+
+## Class Properties
+
+<ResponseField name="controladorActual" type="string" default="Inicio">
+  The current controller name being processed
+</ResponseField>
+
+<ResponseField name="metodoActual" type="string" default="cargaVista">
+  The current method to be executed on the controller
+</ResponseField>
+
+<ResponseField name="vista" type="string" default="index">
+  The view name to be loaded
+</ResponseField>
+
+<ResponseField name="parametros" type="array" default="[]">
+  Parameters extracted from the URL to be passed to the controller method
+</ResponseField>
+
+## Constructor
+
+### __construct()
+
+Initializes the Core class and processes the incoming URL request.
+
+```php
+public function __construct()
+```
+
+**Process Flow:**
+
+1. Extracts URL segments using `getUrl()`
+2. Maps first segment to controller (if exists)
+3. Loads the corresponding controller file
+4. Maps second segment to method or view
+5. Extracts remaining segments as parameters
+6. Executes the controller method with parameters
+
+**Example URL Mapping:**
+
+```
+URL: https://example.com/usuarios/editar/123
+
+Maps to:
+- Controller: Usuarios_Controller.php
+- Method: editar() or View: editar
+- Parameters: [123]
+```
+
+**Error Handling:**
+- Returns 404 error if controller file doesn't exist
+- Defaults to `Inicio` controller if no URL segment provided
+
+**Code Example:**
+
+```php
+// URL: /productos/ver/5
+// This automatically:
+// 1. Loads Controlador/Productos_Controller.php
+// 2. Instantiates ProductosControl class
+// 3. Calls cargaVista('ver', [5]) or ver() method
+
+// In your controller:
+class ProductosControl extends Controlador {
+    public function ver($vista, $params) {
+        $id = $params[0]; // 5
+        // Load product with ID 5
+    }
+}
+```
+
+## Private Methods
+
+### getUrl()
+
+Parses the URL from the `$_GET['url']` parameter and returns it as an array.
+
+```php
+private function getUrl(): array|null
+```
+
+**Returns:**
+
+Array with URL segments:
+- `[0]` - Controller name
+- `[1]` - Method name or view name
+- `[2+]` - Parameters
+
+**Return Value:**
+<ResponseField name="url" type="array|null">
+  Array of URL segments, or null if no URL parameter exists
+</ResponseField>
+
+**URL Processing:**
+- Removes trailing slashes using `rtrim()`
+- Splits URL by '/' delimiter
+- Sanitizes input
+
+**Example:**
+
+```php
+// URL: /usuarios/editar/123/activo
+// Returns: ['usuarios', 'editar', '123', 'activo']
+
+// URL: /inicio
+// Returns: ['inicio']
+
+// URL: /
+// Returns: null
+```
+
+## URL Routing Rules
+
+<Steps>
+  <Step title="Controller Resolution">
+    First URL segment maps to `Controlador/{Name}_Controller.php`
+    
+    - Converts to ucwords (first letter capitalized)
+    - Falls back to `Inicio` controller if not found
+  </Step>
+  
+  <Step title="Method or View Resolution">
+    Second URL segment can be either:
+    
+    - **Method**: If it exists as a public method in the controller
+    - **View**: If no matching method exists, treated as view name
+  </Step>
+  
+  <Step title="Parameter Extraction">
+    All remaining URL segments are passed as parameters
+    
+    - Converted to zero-indexed array
+    - Passed to controller method via `call_user_func_array()`
+  </Step>
+</Steps>
+
+## Usage Examples
+
+### Basic Routing
+
+```php
+// URL: /inicio
+// Loads: Controlador/Inicio_Controller.php
+// Calls: InicioControl->cargaVista('index', [])
+```
+
+### Controller with Method
+
+```php
+// URL: /usuarios/crear
+// Loads: Controlador/Usuarios_Controller.php
+// Calls: UsuariosControl->crear() if method exists
+// OR: UsuariosControl->cargaVista('crear', []) if method doesn't exist
+```
+
+### Controller with Parameters
+
+```php
+// URL: /productos/categoria/electronica/ordenar/precio
+// Loads: Controlador/Productos_Controller.php
+// Calls: ProductosControl->categoria('categoria', ['electronica', 'ordenar', 'precio'])
+// OR: ProductosControl->cargaVista('categoria', ['electronica', 'ordenar', 'precio'])
+```
+
+### Handling 404 Errors
+
+```php
+// URL: /controlador-inexistente/metodo
+// Result: Redirects to error(404)
+```
+
+## Integration with MVC
+
+The Core class is the entry point for all application requests:
+
+```php
+// In public/index.php
+require_once '../Config/config.php';
+require_once 'Libreria/Core.php';
+
+// Start routing
+$init = new Core();
+```
+
+## Technical Details
+
+<AccordionGroup>
+  <Accordion title="Controller Naming Convention">
+    Controllers must follow this naming pattern:
+    
+    - **File**: `{Name}_Controller.php`
+    - **Class**: `{Name}Control extends Controlador`
+    
+    Example:
+    ```php
+    // File: Usuarios_Controller.php
+    class UsuariosControl extends Controlador {
+        // Controller logic
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Default Behavior">
+    When no URL is provided:
+    
+    - Controller: `Inicio`
+    - Method: `cargaVista`
+    - View: `index`
+    - Parameters: `[]`
+  </Accordion>
+  
+  <Accordion title="Method Invocation">
+    Uses `call_user_func_array()` to dynamically call controller methods:
+    
+    ```php
+    call_user_func_array(
+        [$this->controladorActual, $this->metodoActual], 
+        [$this->vista, $this->parametros]
+    );
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [Controlador](/api/controlador) - Base controller class
+- [Routing Guide](/routing) - Detailed routing documentation
+- [Error Handling](/error-handling) - Working with errors

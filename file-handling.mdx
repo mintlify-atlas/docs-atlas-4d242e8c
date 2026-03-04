@@ -1,0 +1,415 @@
+---
+title: File and Image Handling
+description: Learn how to upload, process, and serve files in SwiftFusePHP
+---
+
+SwiftFusePHP provides powerful utilities for handling file and image uploads, including automatic image compression and optimization.
+
+## Image Uploads
+
+### saveImg()
+
+The `saveImg()` function handles image uploads with automatic compression and format validation. Located in `Config/configurar.php`.
+
+<ParamField path="imgs" type="array" required>
+  The `$_FILES` array containing image data
+</ParamField>
+
+<ParamField path="relativePath" type="string" required>
+  Relative path where images will be stored (relative to `RUTA_APP`)
+</ParamField>
+
+<ParamField path="nameImgs" type="array" default="[]">
+  Optional custom filenames. If empty, random names are generated
+</ParamField>
+
+**Returns:** `array|false` - Array of saved filenames, or `false` on failure
+
+### Basic Image Upload
+
+```php
+// Single image upload
+$savedFiles = saveImg($_FILES["imageFile"], "Public/Uploads/Images/");
+
+if ($savedFiles !== false) {
+    $filename = $savedFiles[0];
+    echo "Image saved as: {$filename}";
+} else {
+    echo "Failed to save image";
+}
+```
+
+### Multiple Image Uploads
+
+```php
+// Multiple images at once
+$savedFiles = saveImg($_FILES["imageFiles"], "Public/Uploads/Images/");
+
+if ($savedFiles !== false) {
+    foreach ($savedFiles as $filename) {
+        echo "Saved: {$filename}<br>";
+    }
+} else {
+    echo "Failed to save images";
+}
+```
+
+### Custom Filenames
+
+```php
+// Specify custom names
+$customNames = [
+    "profile-photo.jpg",
+    "banner-image.jpg"
+];
+
+$savedFiles = saveImg(
+    $_FILES["images"],
+    "Public/Uploads/Images/",
+    $customNames
+);
+```
+
+### Complete Controller Example
+
+```php
+class UploadControl extends Controlador
+{
+    public function img() {
+        if (count($_FILES) == 0) {
+            $this->retorno["mensaje"] = "No se ha enviado ningún archivo";
+            $this->retornar();
+        }
+        
+        // Handle single and multiple uploads
+        $file = saveImg($_FILES["imageFile"], "Public/Uploads/Images/");
+        $files = saveImg($_FILES["imageFiles"], "Public/Uploads/Images/");
+        
+        if ($file !== false || $files !== false) {
+            $this->retorno["exito"] = true;
+            $this->retorno["data"] = array_merge(
+                is_array($file) ? $file : [$file],
+                is_array($files) ? $files : [$files]
+            );
+        } else {
+            $this->retorno["mensaje"] = "Error al guardar la imagen";
+        }
+        
+        $this->retornar();
+    }
+}
+```
+
+## Image Processing Features
+
+### Automatic Compression
+
+Images are automatically optimized when they exceed certain thresholds:
+
+<Note>
+**Compression Triggers:**
+- **Width:** Images wider than 1280px are resized
+- **Height:** Images taller than 900px are resized
+- **File Size:** Images over 100KB are compressed
+
+Quality is preserved during compression using smart resampling algorithms.
+</Note>
+
+### Supported Image Formats
+
+The following image formats are supported:
+
+- JPEG/JPG
+- PNG (with alpha channel preservation)
+- GIF
+- WebP
+
+<Warning>
+The function validates image types using `getimagesize()` rather than trusting MIME types, preventing file type spoofing attacks.
+</Warning>
+
+### Automatic Format Detection
+
+```php
+// The function automatically detects the real image type
+// and uses the correct extension, preventing security issues
+$savedFiles = saveImg($_FILES["image"], "Public/Uploads/Images/");
+// File saved with correct extension based on actual image type
+```
+
+### PNG Transparency Preservation
+
+PNG images with transparency are handled specially:
+
+```php
+// Transparency is automatically preserved during resize
+imagesavealpha($original, true);
+imagealphablending($lienzo, false);
+imagesavealpha($lienzo, true);
+```
+
+### Automatic Directory Creation
+
+Directories are created automatically if they don't exist:
+
+```php
+// No need to manually create directories
+$saved = saveImg($_FILES["img"], "Public/Uploads/2024/March/");
+// Directories are created automatically
+```
+
+## File Uploads
+
+### saveFile()
+
+The `saveFile()` function handles general file uploads with automatic PDF compression.
+
+<ParamField path="files" type="array" required>
+  The `$_FILES` array containing file data
+</ParamField>
+
+<ParamField path="relativePath" type="string" required>
+  Relative path where files will be stored (relative to `RUTA_APP`)
+</ParamField>
+
+<ParamField path="nameFiles" type="array" default="[]">
+  Optional custom filenames. If empty, random names are generated
+</ParamField>
+
+**Returns:** `array|false` - Array of saved filenames, or `false` on failure
+
+### Basic File Upload
+
+```php
+// Single file upload
+$savedFiles = saveFile($_FILES["document"], "Public/Uploads/Documents/");
+
+if ($savedFiles !== false) {
+    $filename = $savedFiles[0];
+    echo "File saved as: {$filename}";
+} else {
+    echo "Failed to save file";
+}
+```
+
+### Multiple File Uploads
+
+```php
+// Multiple files at once
+$savedFiles = saveFile($_FILES["documents"], "Public/Uploads/Documents/");
+
+if ($savedFiles !== false) {
+    foreach ($savedFiles as $filename) {
+        echo "Saved: {$filename}<br>";
+    }
+}
+```
+
+### PDF Auto-Compression
+
+<Note>
+PDF files are automatically compressed using an external shell script after upload:
+
+```php
+if (str_contains($nombre, ".pdf")) {
+    exec(RUTA_APP . "Archivos/scripts/compress_pdf.sh '" . RUTA_APP . "' '" . $destino . $nombre . "'");
+}
+```
+
+Make sure `Archivos/scripts/compress_pdf.sh` is executable and available in your installation.
+</Note>
+
+### Custom Filenames for Files
+
+```php
+$customNames = [
+    "contract-2024.pdf",
+    "invoice-001.pdf"
+];
+
+$savedFiles = saveFile(
+    $_FILES["files"],
+    "Public/Uploads/Documents/",
+    $customNames
+);
+```
+
+## File Serving
+
+### File Class
+
+The `File` class (in `Libreria/File.php`) serves files with proper MIME types.
+
+```php
+class File
+{
+    /**
+     * Load and serve a file
+     */
+    public function load($file)
+    {
+        $file = RUTA_APP . $file;
+        
+        if (is_dir($file)) {
+            error(403);
+        }
+        
+        if (file_exists($file)) {
+            header('Content-Type: ' . mime_content_type($file));
+            readfile($file);
+        } else {
+            error(404);
+        }
+    }
+}
+```
+
+### Serving Files Example
+
+```php
+// In your controller
+public function download($filename) {
+    $fileLib = new File();
+    $fileLib->load("Public/Uploads/Documents/{$filename}");
+}
+```
+
+<Warning>
+**Security Notice:**
+
+The `File::load()` method prevents directory traversal attacks by checking if the path is a directory and returning a 403 error. However, always validate and sanitize filenames before passing them to this method.
+</Warning>
+
+## Random Filename Generation
+
+Both `saveImg()` and `saveFile()` generate unique random filenames to prevent collisions:
+
+```php
+// Generated filename format:
+do {
+    $nombreImagen = random_int(1, 999) . date("YmdHis") . uniqid() . "_thumb.jpg";
+} while (file_exists($destino . $nombreImagen));
+
+// Example: 42320240315143052660123abc456_thumb.jpg
+```
+
+This ensures:
+- No filename collisions
+- Unpredictable filenames (security)
+- Timestamped for easy sorting
+
+## Error Handling
+
+Both functions check for upload errors:
+
+```php
+// Single file
+if ($_FILES["file"]["error"] != 0) {
+    return false; // Upload error occurred
+}
+
+// Multiple files
+for ($i = 0; $i < count($_FILES['files']['name']); $i++) {
+    if ($_FILES["files"]["error"][$i] != 0) {
+        return false;
+    }
+}
+```
+
+### Common Upload Errors
+
+```php
+switch ($_FILES['file']['error']) {
+    case UPLOAD_ERR_INI_SIZE:
+        echo "File exceeds upload_max_filesize";
+        break;
+    case UPLOAD_ERR_FORM_SIZE:
+        echo "File exceeds MAX_FILE_SIZE";
+        break;
+    case UPLOAD_ERR_PARTIAL:
+        echo "File was only partially uploaded";
+        break;
+    case UPLOAD_ERR_NO_FILE:
+        echo "No file was uploaded";
+        break;
+    case UPLOAD_ERR_NO_TMP_DIR:
+        echo "Missing temporary folder";
+        break;
+    case UPLOAD_ERR_CANT_WRITE:
+        echo "Failed to write file to disk";
+        break;
+}
+```
+
+## HTML Form Examples
+
+### Single Image Upload
+
+```html
+<form method="POST" action="/Upload/img" enctype="multipart/form-data">
+    <input type="file" name="imageFile" accept="image/*" required>
+    <button type="submit">Upload Image</button>
+</form>
+```
+
+### Multiple Image Upload
+
+```html
+<form method="POST" action="/Upload/img" enctype="multipart/form-data">
+    <input type="file" name="imageFiles[]" accept="image/*" multiple required>
+    <button type="submit">Upload Images</button>
+</form>
+```
+
+### File Upload with Multiple Types
+
+```html
+<form method="POST" action="/Upload/file" enctype="multipart/form-data">
+    <input type="file" name="documents[]" 
+           accept=".pdf,.doc,.docx,.txt" 
+           multiple required>
+    <button type="submit">Upload Documents</button>
+</form>
+```
+
+## Best Practices
+
+1. **Validate file types on server-side** - Don't rely solely on HTML accept attributes
+2. **Set appropriate upload limits** - Configure `upload_max_filesize` and `post_max_size` in php.ini
+3. **Store uploads outside web root** - Or use access controls to prevent direct execution
+4. **Generate unique filenames** - Use the built-in random generation
+5. **Check disk space** - Monitor available storage for uploads
+6. **Implement file size limits** - Prevent abuse and resource exhaustion
+7. **Scan for malware** - Consider integrating virus scanning for uploaded files
+8. **Use HTTPS** - Encrypt file uploads in transit
+
+## Configuration
+
+### PHP.ini Settings
+
+```ini
+; Maximum file upload size
+upload_max_filesize = 10M
+
+; Maximum POST data size
+post_max_size = 12M
+
+; Maximum number of files per upload
+max_file_uploads = 20
+
+; Temporary upload directory
+upload_tmp_dir = /tmp
+```
+
+### Image Optimization Settings
+
+Modify these constants in `saveImg()` function if needed:
+
+```php
+// Maximum dimensions before resize
+$max_ancho = 1280; // Max width
+$max_alto = 900;   // Max height
+
+// File size threshold
+$pesoImagen < 100000 // 100KB threshold
+```

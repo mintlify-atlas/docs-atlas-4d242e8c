@@ -1,0 +1,462 @@
+---
+title: 'Model'
+description: 'Abstract base class for database models'
+icon: 'database'
+---
+
+## Overview
+
+The `Model` abstract class provides the foundation for all database models in SwiftFusePHP. It automatically establishes database connections and provides common properties for data management.
+
+## Location
+
+```
+Modelo/Model_Abstract.php
+```
+
+## Class Properties
+
+<ResponseField name="Conexion" type="Conexion">
+  Database connection instance automatically initialized in constructor
+</ResponseField>
+
+<ResponseField name="mensaje" type="string|null" default="null">
+  Stores error or status messages from model operations
+</ResponseField>
+
+<ResponseField name="entidad" type="mixed">
+  Stores the primary entity or data object being managed by the model
+</ResponseField>
+
+## Constructor
+
+### __construct()
+
+Initializes the model and establishes a database connection.
+
+```php
+public function __construct()
+```
+
+**Process:**
+1. Creates new `Conexion` instance
+2. Checks for connection errors
+3. If error exists, calls error handler and terminates
+
+**Error Handling:**
+- Automatically calls `handler(E_ERROR, ...)` if connection fails
+- Prevents model from being used with invalid connection
+
+**Example:**
+
+```php
+class UsuarioMode extends Model {
+    public function __construct() {
+        parent::__construct();
+        // Connection is now available in $this->Conexion
+        // If connection failed, execution stops here
+    }
+}
+```
+
+## Public Methods
+
+### getMensaje()
+
+Retrieves the current message stored in the model.
+
+```php
+public function getMensaje(): string|null
+```
+
+**Returns:**
+<ResponseField name="mensaje" type="string|null">
+  The stored message, typically containing error information or operation status
+</ResponseField>
+
+**Example:**
+
+```php
+$usuarioModel = $this->modelo("Usuario");
+$resultado = $usuarioModel->insert($nombre, $email);
+
+if (!$resultado) {
+    $error = $usuarioModel->getMensaje();
+    echo "Error: " . $error;
+}
+```
+
+### getEntidad()
+
+Retrieves the current entity stored in the model.
+
+```php
+public function getEntidad(): mixed
+```
+
+**Returns:**
+<ResponseField name="entidad" type="mixed">
+  The stored entity object or data
+</ResponseField>
+
+**Example:**
+
+```php
+$usuarioModel = $this->modelo("Usuario");
+$usuarioModel->getById(5);
+
+$usuario = $usuarioModel->getEntidad();
+echo $usuario->nombre;
+```
+
+## Creating a Model
+
+### Basic Model Structure
+
+```php
+<?php
+// Modelo/Usuario_Model.php
+
+class UsuarioMode extends Model {
+    
+    public function __construct() {
+        parent::__construct();
+        $this->entidad = "usuarios"; // Table name
+    }
+    
+    /**
+     * Get all users
+     */
+    public function getAll() {
+        $this->Conexion->query("SELECT * FROM usuarios");
+        return $this->Conexion->getObjects();
+    }
+    
+    /**
+     * Get user by ID
+     */
+    public function getById($id) {
+        $this->Conexion->query("SELECT * FROM usuarios WHERE id = :id");
+        $this->Conexion->bind(':id', $id);
+        return $this->Conexion->getObject();
+    }
+    
+    /**
+     * Insert new user
+     */
+    public function insert($nombre, $email) {
+        try {
+            $this->Conexion->query(
+                "INSERT INTO usuarios (nombre, email) VALUES (:nombre, :email)"
+            );
+            $this->Conexion->bind(':nombre', $nombre);
+            $this->Conexion->bind(':email', $email);
+            
+            if ($this->Conexion->execute()) {
+                $this->mensaje = "Usuario creado exitosamente";
+                return true;
+            } else {
+                $this->mensaje = $this->Conexion->getError();
+                return false;
+            }
+        } catch (Exception $e) {
+            $this->mensaje = $e->getMessage();
+            return false;
+        }
+    }
+    
+    /**
+     * Update user
+     */
+    public function update($id, $nombre, $email) {
+        $this->Conexion->query(
+            "UPDATE usuarios SET nombre = :nombre, email = :email WHERE id = :id"
+        );
+        $this->Conexion->bind(':id', $id);
+        $this->Conexion->bind(':nombre', $nombre);
+        $this->Conexion->bind(':email', $email);
+        
+        if ($this->Conexion->execute()) {
+            $this->mensaje = "Usuario actualizado";
+            return true;
+        }
+        
+        $this->mensaje = $this->Conexion->getError();
+        return false;
+    }
+    
+    /**
+     * Delete user
+     */
+    public function delete($id) {
+        $this->Conexion->query("DELETE FROM usuarios WHERE id = :id");
+        $this->Conexion->bind(':id', $id);
+        
+        if ($this->Conexion->execute()) {
+            $this->mensaje = "Usuario eliminado";
+            return $this->Conexion->getRecord() > 0;
+        }
+        
+        $this->mensaje = $this->Conexion->getError();
+        return false;
+    }
+}
+```
+
+## Model Patterns
+
+<AccordionGroup>
+  <Accordion title="CRUD Operations">
+    Standard Create, Read, Update, Delete pattern:
+    
+    ```php
+    class ProductoMode extends Model {
+        
+        // Create
+        public function insert($nombre, $precio) {
+            $this->Conexion->query(
+                "INSERT INTO productos (nombre, precio) VALUES (:nombre, :precio)"
+            );
+            $this->Conexion->bind(':nombre', $nombre);
+            $this->Conexion->bind(':precio', $precio);
+            return $this->Conexion->execute();
+        }
+        
+        // Read
+        public function getAll() {
+            $this->Conexion->query("SELECT * FROM productos");
+            return $this->Conexion->getObjects();
+        }
+        
+        // Update
+        public function update($id, $nombre, $precio) {
+            $this->Conexion->query(
+                "UPDATE productos SET nombre = :nombre, precio = :precio WHERE id = :id"
+            );
+            $this->Conexion->bind(':id', $id);
+            $this->Conexion->bind(':nombre', $nombre);
+            $this->Conexion->bind(':precio', $precio);
+            return $this->Conexion->execute();
+        }
+        
+        // Delete
+        public function delete($id) {
+            $this->Conexion->query("DELETE FROM productos WHERE id = :id");
+            $this->Conexion->bind(':id', $id);
+            return $this->Conexion->execute();
+        }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Complex Queries">
+    Models with joins and complex conditions:
+    
+    ```php
+    class PedidoMode extends Model {
+        
+        public function getConDetalles($id) {
+            $this->Conexion->query("
+                SELECT p.*, u.nombre as usuario_nombre, 
+                       pd.producto_id, pd.cantidad
+                FROM pedidos p
+                JOIN usuarios u ON p.usuario_id = u.id
+                JOIN pedidos_detalle pd ON p.id = pd.pedido_id
+                WHERE p.id = :id
+            ");
+            $this->Conexion->bind(':id', $id);
+            return $this->Conexion->getObjects();
+        }
+        
+        public function buscar($filtros) {
+            $sql = "SELECT * FROM pedidos WHERE 1=1";
+            
+            if (!empty($filtros['fecha_inicio'])) {
+                $sql .= " AND fecha >= :fecha_inicio";
+            }
+            
+            if (!empty($filtros['estado'])) {
+                $sql .= " AND estado = :estado";
+            }
+            
+            $this->Conexion->query($sql);
+            
+            if (!empty($filtros['fecha_inicio'])) {
+                $this->Conexion->bind(':fecha_inicio', $filtros['fecha_inicio']);
+            }
+            
+            if (!empty($filtros['estado'])) {
+                $this->Conexion->bind(':estado', $filtros['estado']);
+            }
+            
+            return $this->Conexion->getObjects();
+        }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Transaction Handling">
+    Models that perform multiple operations:
+    
+    ```php
+    class OrdenMode extends Model {
+        
+        public function crearOrdenCompleta($datos) {
+            try {
+                // Start transaction
+                $this->Conexion->transaction();
+                
+                // Insert order
+                $this->Conexion->query(
+                    "INSERT INTO ordenes (usuario_id, total) VALUES (:usuario_id, :total)"
+                );
+                $this->Conexion->bind(':usuario_id', $datos['usuario_id']);
+                $this->Conexion->bind(':total', $datos['total']);
+                $this->Conexion->execute();
+                
+                // Insert order items
+                foreach ($datos['items'] as $item) {
+                    $this->Conexion->executeTransaction(
+                        "INSERT INTO orden_items (producto_id, cantidad) 
+                         VALUES ({$item['producto_id']}, {$item['cantidad']})"
+                    );
+                }
+                
+                // Commit
+                if ($this->Conexion->commit()) {
+                    $this->mensaje = "Orden creada exitosamente";
+                    return true;
+                } else {
+                    $this->Conexion->rollBack();
+                    $this->mensaje = "Error al confirmar orden";
+                    return false;
+                }
+                
+            } catch (Exception $e) {
+                $this->Conexion->rollBack();
+                $this->mensaje = $e->getMessage();
+                return false;
+            }
+        }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Using Models in Controllers
+
+```php
+class UsuariosControl extends Controlador {
+    protected $folder = "usuarios";
+    
+    public function lista($vista, $params) {
+        // Load model
+        $usuarioModel = $this->modelo("Usuario");
+        
+        // Get data
+        $usuarios = $usuarioModel->getAll();
+        
+        // Pass to view
+        $this->vista($this->folder . '/lista', [
+            'usuarios' => $usuarios
+        ]);
+    }
+    
+    public function api_crear() {
+        $nombre = filterINPUT($_POST['nombre']);
+        $email = filterINPUT($_POST['email']);
+        
+        $usuarioModel = $this->modelo("Usuario");
+        $resultado = $usuarioModel->insert($nombre, $email);
+        
+        $this->retorno['exito'] = $resultado;
+        $this->retorno['mensaje'] = $usuarioModel->getMensaje();
+        $this->retornar();
+    }
+}
+```
+
+## Error Handling
+
+```php
+class ProductoMode extends Model {
+    
+    public function insert($nombre, $precio) {
+        // Validate input
+        if (empty($nombre)) {
+            $this->mensaje = "El nombre es requerido";
+            return false;
+        }
+        
+        if ($precio < 0) {
+            $this->mensaje = "El precio debe ser positivo";
+            return false;
+        }
+        
+        try {
+            $this->Conexion->query(
+                "INSERT INTO productos (nombre, precio) VALUES (:nombre, :precio)"
+            );
+            $this->Conexion->bind(':nombre', $nombre);
+            $this->Conexion->bind(':precio', $precio);
+            
+            if ($this->Conexion->execute()) {
+                $this->mensaje = "Producto creado";
+                return true;
+            } else {
+                $this->mensaje = $this->Conexion->getError() ?? "Error desconocido";
+                return false;
+            }
+        } catch (PDOException $e) {
+            $this->mensaje = "Error de base de datos: " . $e->getMessage();
+            return false;
+        }
+    }
+}
+```
+
+## Model Naming Convention
+
+<Note>
+  **File Naming:** `{Name}_Model.php`
+  
+  **Class Naming:** `{Name}Mode extends Model`
+  
+  Note the abbreviation: "Mode" not "Model"
+</Note>
+
+```php
+// ✅ Correct
+// File: Usuario_Model.php
+class UsuarioMode extends Model { }
+
+// File: Producto_Model.php
+class ProductoMode extends Model { }
+
+// ❌ Incorrect
+// File: Usuario_Model.php
+class UsuarioModel extends Model { } // Wrong class name
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Prepared Statements" icon="shield-halved">
+    Always use `bind()` for parameters to prevent SQL injection
+  </Card>
+  <Card title="Set Error Messages" icon="message">
+    Always update `$this->mensaje` with operation results
+  </Card>
+  <Card title="Return Consistent Types" icon="code">
+    Return booleans for success/fail, objects/arrays for data retrieval
+  </Card>
+  <Card title="Validate Input" icon="circle-check">
+    Validate data before database operations
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [Conexion](/api/conexion) - Database connection class
+- [Controlador](/api/controlador) - Loading models in controllers
+- [Database Guide](/database) - Working with databases

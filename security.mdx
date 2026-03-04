@@ -1,0 +1,529 @@
+---
+title: Security Features
+description: Learn about the security mechanisms built into SwiftFusePHP
+---
+
+SwiftFusePHP includes multiple security layers to protect your application from common vulnerabilities and attacks.
+
+## Input Filtering
+
+### filterINPUT()
+
+The `filterINPUT()` function sanitizes user input and prevents HTML/script injection attacks.
+
+<ParamField path="string" type="string" required>
+  The input string to filter
+</ParamField>
+
+**Returns:** `string|null` - Filtered string, or `null` if input is empty/null
+
+```php
+// Basic usage
+$cleanName = filterINPUT($_POST['name']);
+$cleanEmail = filterINPUT($_POST['email']);
+```
+
+### How It Works
+
+1. **Null Detection** - Returns `null` for empty strings or 'null' values
+2. **HTML Tag Detection** - Blocks strings containing HTML tags or dangerous characters
+3. **Whitespace Trimming** - Removes leading/trailing whitespace
+4. **Auto-blocking** - Triggers error 400 if malicious input detected
+
+```php
+function filterINPUT($string)
+{
+    // Return null for empty or 'null' strings
+    if ($string == "" || mb_strtolower($string) == "null") {
+        return null;
+    }
+    
+    // Block HTML tags and dangerous characters
+    if (preg_match("/^<|.<|>$|;/", $string) >= 1) {
+        error(400); // Bad Request
+    }
+    
+    return trim($string);
+}
+```
+
+### Usage in Controllers
+
+```php
+class UserControl extends Controlador
+{
+    public function create()
+    {
+        // Filter all inputs
+        $name = filterINPUT($_POST['name']);
+        $email = filterINPUT($_POST['email']);
+        $bio = filterINPUT($_POST['bio']);
+        
+        // Validate email format
+        if (!isEmail($email)) {
+            $this->retorno["mensaje"] = "Invalid email format";
+            $this->retornar();
+        }
+        
+        // Create user
+        $userId = $this->User->create($name, $email, $bio);
+        
+        if ($userId) {
+            $this->retorno["exito"] = true;
+            $this->retorno["data"] = ["id" => $userId];
+        } else {
+            $this->retorno["mensaje"] = "Failed to create user";
+        }
+        
+        $this->retornar();
+    }
+}
+```
+
+<Warning>
+The `filterINPUT()` function automatically calls `error(400)` and terminates execution if malicious input is detected. Make sure this behavior aligns with your application's error handling strategy.
+</Warning>
+
+## Email Validation
+
+### isEmail()
+
+Validates email addresses using a comprehensive regex pattern.
+
+<ParamField path="text" type="string" required>
+  The text to validate as an email
+</ParamField>
+
+**Returns:** `bool` - `true` if valid email, `false` otherwise
+
+```php
+if (isEmail($email)) {
+    // Valid email
+    $this->User->sendWelcomeEmail($email);
+} else {
+    // Invalid email
+    $this->retorno["mensaje"] = "Please enter a valid email address";
+}
+```
+
+### Supported Email Formats
+
+The regex pattern supports:
+- Standard email formats: `user@example.com`
+- Subdomains: `user@mail.example.com`
+- Plus addressing: `user+tag@example.com`
+- Dots and hyphens: `user.name@example-domain.com`
+- International characters: `usuario@dominio.com` (including ñ, Ñ)
+- Numeric usernames: `123@example.com`
+
+```php
+function isEmail($text): bool
+{
+    if ($text == null) return false;
+    
+    $mailformat = '/^[a-zA-Z0-9ñÑ]([a-zA-Z0-9._+-ñÑ]*[a-zA-Z0-9ñÑ])?@[a-zA-Z0-9ñÑ]([a-zA-Z0-9.\-ñÑ]*[a-zA-Z0-9ñÑ])?\.[a-zA-Z]{2,}$/';
+    
+    return preg_match($mailformat, $text) === 1;
+}
+```
+
+## reCAPTCHA v3 Integration
+
+### validarToken()
+
+Validates Google reCAPTCHA v3 tokens to prevent bot submissions.
+
+<ParamField path="typeAction" type="string" required>
+  The expected action type (e.g., 'login', 'register', 'submit')
+</ParamField>
+
+**Returns:** `bool` - `true` if token is valid and score > 0.5, `false` otherwise
+
+### Configuration
+
+Set your reCAPTCHA secret key in `Config/configurar.user.php`:
+
+```php
+define("CLAVE_RECAPTCHA_V3", "your-secret-key-here");
+```
+
+### Frontend Implementation
+
+```html
+<!-- Include reCAPTCHA v3 script -->
+<script src="https://www.google.com/recaptcha/api.js?render=YOUR_SITE_KEY"></script>
+
+<script>
+function submitForm() {
+    grecaptcha.ready(function() {
+        grecaptcha.execute('YOUR_SITE_KEY', {action: 'submit_form'})
+            .then(function(token) {
+                // Add token to form
+                document.getElementById('recaptcha-token').value = token;
+                document.getElementById('recaptcha-action').value = 'submit_form';
+                
+                // Submit form
+                document.getElementById('myForm').submit();
+            });
+    });
+}
+</script>
+
+<form id="myForm" method="POST" action="/api/submit">
+    <input type="hidden" id="recaptcha-token" name="token">
+    <input type="hidden" id="recaptcha-action" name="action">
+    <!-- Other form fields -->
+    <button type="button" onclick="submitForm()">Submit</button>
+</form>
+```
+
+### Backend Validation
+
+```php
+class FormControl extends Controlador
+{
+    public function submit()
+    {
+        // Validate reCAPTCHA token
+        if (!validarToken('submit_form')) {
+            $this->retorno["mensaje"] = "reCAPTCHA validation failed";
+            $this->retornar();
+        }
+        
+        // Process form submission
+        $name = filterINPUT($_POST['name']);
+        $email = filterINPUT($_POST['email']);
+        
+        // Continue with business logic...
+    }
+}
+```
+
+### How It Works
+
+```php
+function validarToken($typeAction)
+{
+    $token = $_POST["token"];
+    $action = $_POST["action"];
+    
+    // Call Google's API
+    $cu = curl_init();
+    curl_setopt($cu, CURLOPT_URL, "https://www.google.com/recaptcha/api/siteverify");
+    curl_setopt($cu, CURLOPT_POST, 1);
+    curl_setopt($cu, CURLOPT_POSTFIELDS, http_build_query(array(
+        "secret" => CLAVE_RECAPTCHA_V3,
+        "response" => $token
+    )));
+    curl_setopt($cu, CURLOPT_RETURNTRANSFER, true);
+    $response = curl_exec($cu);
+    curl_close($cu);
+    
+    $datos = json_decode($response, true);
+    
+    // Validate score and action
+    if ($datos["success"] && $datos["score"] > 0.5) {
+        if ($datos["action"] == $typeAction) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+```
+
+<Note>
+**Score Threshold**
+
+reCAPTCHA v3 returns a score between 0.0 (likely bot) and 1.0 (likely human). The framework uses a threshold of 0.5. Adjust this value based on your security requirements:
+
+- **0.0 - 0.3:** Likely bot
+- **0.3 - 0.7:** Suspicious
+- **0.7 - 1.0:** Likely human
+</Note>
+
+## SQL Injection Prevention
+
+SwiftFusePHP uses PDO prepared statements throughout the framework.
+
+### Safe Database Queries
+
+```php
+// SAFE - Using prepared statements
+$this->Conexion->query("SELECT * FROM users WHERE email = :email");
+$this->Conexion->bind(':email', $email);
+$user = $this->Conexion->getObject();
+```
+
+```php
+// DANGEROUS - Never do this!
+// $query = "SELECT * FROM users WHERE email = '{$email}'";
+// $this->Conexion->query($query);
+```
+
+### Automatic Type Binding
+
+The `bind()` method automatically determines parameter types:
+
+```php
+$this->Conexion->bind(':id', $id);           // PDO::PARAM_INT
+$this->Conexion->bind(':active', true);       // PDO::PARAM_BOOL
+$this->Conexion->bind(':deleted', null);      // PDO::PARAM_NULL
+$this->Conexion->bind(':name', $name);        // PDO::PARAM_STR
+$this->Conexion->bind(':meta', $array);       // JSON + PDO::PARAM_STR
+```
+
+## File Upload Security
+
+### Image Type Validation
+
+The `saveImg()` function validates images using `getimagesize()` instead of trusting MIME types:
+
+```php
+// Detect real image type
+$infoImagen = getimagesize($tmpImagen);
+if ($infoImagen === false) {
+    handler(E_ERROR, "No se pudo detectar el tipo de imagen.", __FILE__, __LINE__);
+    return false;
+}
+
+// Validate against whitelist
+switch ($tipoReal) {
+    case IMAGETYPE_JPEG:
+    case IMAGETYPE_PNG:
+    case IMAGETYPE_GIF:
+    case IMAGETYPE_WEBP:
+        // Allowed
+        break;
+    default:
+        handler(E_ERROR, "Tipo de imagen no soportado.", __FILE__, __LINE__);
+        return false;
+}
+```
+
+<Warning>
+**File Upload Best Practices:**
+
+1. Always validate file types on the server
+2. Use `getimagesize()` for images, not MIME type
+3. Store uploads outside the web root when possible
+4. Generate random filenames to prevent overwrites
+5. Set appropriate file size limits
+6. Check file extensions against a whitelist
+</Warning>
+
+### Directory Traversal Prevention
+
+The `File::load()` method prevents directory access:
+
+```php
+public function load($file)
+{
+    $file = RUTA_APP . $file;
+    
+    // Prevent directory listing
+    if (is_dir($file)) {
+        error(403);
+    }
+    
+    if (file_exists($file)) {
+        header('Content-Type: ' . mime_content_type($file));
+        readfile($file);
+    } else {
+        error(404);
+    }
+}
+```
+
+## SSL/HTTPS Configuration
+
+### is_ssl()
+
+Configures SSL settings and URL schemes.
+
+```php
+// Force HTTPS
+is_ssl(true);
+
+// Force HTTP
+is_ssl(false);
+
+// Auto-detect
+is_ssl(null);
+```
+
+### Auto-Detection
+
+```php
+function is_ssl($forceSSL)
+{
+    if ($forceSSL === true) {
+        $protocol = "https";
+    } elseif ($forceSSL === false) {
+        $protocol = "http";
+    } else {
+        // Auto-detect from server variables
+        $isHttps =
+            (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
+            (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443) ||
+            (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && 
+             $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+        
+        $protocol = $isHttps ? "https" : "http";
+    }
+    
+    define("IS_SSL", $protocol === "https");
+    // ... URL construction
+}
+```
+
+### Database SSL Connections
+
+Enable SSL for database connections:
+
+```php
+// In Config/configurar.user.php
+define("SSL_CA", "/path/to/ca-certificate.pem");
+```
+
+The connection class automatically uses SSL when configured:
+
+```php
+if ($this->ssl_ca) {
+    $opciones[PDO::MYSQL_ATTR_SSL_CA] = $this->ssl_ca;
+}
+```
+
+## Session Security
+
+### suspend()
+
+Temporarily suspends platform access for maintenance or security.
+
+<ParamField path="isForced" type="bool" default="true">
+  If `true`, only suspends for non-logged-in users. If `false`, suspends for all users.
+</ParamField>
+
+```php
+// Suspend access for non-authenticated users
+suspend(true);
+
+// Suspend access for everyone (maintenance mode)
+suspend(false);
+```
+
+### Implementation
+
+```php
+function suspend($isForced = true)
+{
+    $suspend = function () {
+        if (!key_exists("suspend", $_SESSION)) {
+            $_SESSION["suspend"] = true;
+            error(503); // Service Unavailable
+        } else {
+            unset($_SESSION["suspend"]);
+        }
+    };
+    
+    if ($isForced) {
+        // Only suspend if not logged in
+        if (!key_exists("User", $_SESSION)) {
+            $suspend();
+        }
+    } else {
+        // Suspend for everyone
+        $suspend();
+    }
+}
+```
+
+## Error Page Redirection
+
+### error()
+
+Redirects to error pages with appropriate HTTP status codes.
+
+<ParamField path="code" type="int" required>
+  HTTP status code (400, 403, 404, 501, 503)
+</ParamField>
+
+<ParamField path="isRedirect" type="bool" default="true">
+  If `true`, performs HTTP redirect. If `false`, includes the error view directly.
+</ParamField>
+
+```php
+// Redirect to 404 page
+error(404);
+
+// Show 403 page without redirect
+error(403, false);
+
+// Bad request
+error(400);
+
+// Maintenance mode
+error(503);
+
+// Under development
+error(501);
+```
+
+### Custom Error Pages
+
+Error views are located in `Vista/error/`:
+
+- `400_View.php` - Bad Request
+- `403_View.php` - Forbidden
+- `404_View.php` - Not Found
+- `501_View.php` - Development Mode
+- `503_View.php` - Maintenance Mode
+
+## HTTP Status Code Management
+
+### setStatusCode()
+
+Sets the HTTP response status code.
+
+```php
+setStatusCode(200); // OK
+setStatusCode(201); // Created
+setStatusCode(400); // Bad Request
+setStatusCode(401); // Unauthorized
+setStatusCode(500); // Internal Server Error
+```
+
+Supports all standard HTTP status codes from 100-511.
+
+## Security Checklist
+
+<Note>
+**Essential Security Measures:**
+
+- [ ] Use `filterINPUT()` on all user inputs
+- [ ] Validate emails with `isEmail()`
+- [ ] Implement reCAPTCHA v3 on public forms
+- [ ] Use prepared statements for all database queries
+- [ ] Validate file uploads with `getimagesize()`
+- [ ] Enable SSL/HTTPS in production
+- [ ] Configure database SSL connections
+- [ ] Set strong session configuration
+- [ ] Implement CSRF tokens for forms
+- [ ] Use secure password hashing (bcrypt/Argon2)
+- [ ] Enable error logging in production
+- [ ] Disable error display in production
+- [ ] Keep SwiftFusePHP updated
+</Note>
+
+## Best Practices
+
+1. **Always validate and sanitize input** - Never trust user input
+2. **Use HTTPS in production** - Encrypt data in transit
+3. **Implement reCAPTCHA** - Protect against bots and automated attacks
+4. **Enable database SSL** - Secure database connections
+5. **Use prepared statements** - Prevent SQL injection
+6. **Validate file types** - Don't trust MIME types
+7. **Set secure headers** - Implement CSP, X-Frame-Options, etc.
+8. **Use strong passwords** - Implement password policies
+9. **Enable rate limiting** - Prevent brute force attacks
+10. **Log security events** - Monitor for suspicious activity

@@ -1,0 +1,684 @@
+---
+title: Views
+description: Creating and rendering view templates in SwiftFusePHP
+---
+
+## Overview
+
+Views in SwiftFusePHP are template files that handle the presentation layer. They render HTML and display data passed from controllers. Views support both `.php` and `.html` file extensions.
+
+## View Directory Structure
+
+Views are organized in the `Vista/` directory, typically grouped by module:
+
+```
+Vista/
+├── inicio/
+│   ├── index_View.php
+│   └── contact_View.php
+├── user/
+│   ├── profile_View.php
+│   └── dashboard_View.php
+└── error/
+    ├── 404_View.php
+    └── 403_View.php
+```
+
+<Note>
+**Naming Convention:**
+- File name: `{name}_View.{ext}` (e.g., `index_View.php`)
+- The view name is lowercase
+- Extensions can be `.php` or `.html`
+</Note>
+
+## Loading Views
+
+Views are loaded from controllers using the `vista()` method:
+
+<CodeGroup>
+```php Controlador.php (Lines 55-69)
+public function vista($vista, $parametro = [])
+{
+    $vista = lcfirst($vista);
+    $extensions = array("html", "php");
+    $isExist = false;
+    foreach ($extensions as $extension) {
+        $file = "Vista/" . $vista . "_View." . $extension;
+        if (file_exists($file)) {
+            $isExist = true;
+            require_once $file;
+            break;
+        }
+    }
+    ($isExist ?: error(404));
+}
+```
+</CodeGroup>
+
+### How It Works
+
+1. **Converts to lowercase:** View paths are converted to lowercase
+2. **Checks extensions:** Tries `.html` first, then `.php`
+3. **Requires file:** Uses `require_once` to include the view
+4. **Error handling:** Returns 404 if view doesn't exist
+
+## Creating a Simple View
+
+### Example 1: Basic HTML View
+
+<CodeGroup>
+```php Vista/inicio/index_View.php (Lines 1-40)
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <?php require_once RUTA_APP . "Includ/head.php";?>
+    <script src="<?= RUTA_URL;?>JS/person.js"></script>
+    <title><?php echo NOMBRESITIO;?></title>
+</head>
+<body>
+    <h1>Editame</h1>
+    <h2>Button loading</h2>
+    <button id="btn1" onclick="btnLoadingExample(this)">Primer button</button>
+    <button id="btn2" onclick="btnLoadingExample(this)">Segundo button</button>
+    <button onclick="btnLoadExample(this)">Reestablecer buttons</button>
+
+    <p id="currency">2050.55</p>
+
+    <br>
+    <button id="btnListPeople" onclick="list(this)">Listar personas en JSON</button>
+    <br>
+    <br>
+    <div id="dvListPeople">
+
+    </div>
+
+    <script>
+        onload(() => {
+            currency.innerText = formatCurrency(currency.innerText);
+        });
+        
+        function btnLoadingExample(btn){
+            BUTTONLOADING("#" + btn.id);
+        }
+
+        function btnLoadExample(){
+            BUTTONLOAD("#btn1");
+            BUTTONLOAD("#btn2");
+        }
+    </script>
+</body>
+</html>
+```
+</CodeGroup>
+
+<Tip>
+**Use PHP Constants for Paths**
+
+SwiftFusePHP provides constants for paths and URLs:
+- `RUTA_APP` - Application root path
+- `RUTA_URL` - Base URL for assets
+- `NOMBRESITIO` - Site name
+</Tip>
+
+## Passing Data to Views
+
+Data is passed from controllers to views through the `$parametro` array:
+
+<Tabs>
+  <Tab title="Controller">
+    ```php User_Controller.php
+    public function profile($vista, $parametros)
+    {
+        $userId = $parametros[0];
+        $user = $this->User->getById($userId);
+        
+        // Pass data to view
+        $data = [
+            'user' => $user,
+            'title' => 'User Profile'
+        ];
+        
+        $this->vista('user/profile', $data);
+    }
+    ```
+  </Tab>
+  
+  <Tab title="View">
+    ```php Vista/user/profile_View.php
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title><?php echo $title; ?></title>
+    </head>
+    <body>
+        <h1><?php echo $user->name; ?></h1>
+        <p>Email: <?php echo $user->email; ?></p>
+        <p>Member since: <?php echo $user->created_at; ?></p>
+    </body>
+    </html>
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+The `$parametro` array is extracted, making each key available as a variable in the view.
+</Note>
+
+## Default View Loading
+
+When no specific method exists in the controller, the `cargaVista()` method is called:
+
+<CodeGroup>
+```php Controlador.php (Lines 23-29)
+public function cargaVista($archivo, $data){
+    if(count($data) == 0 ){
+        $this->vista($this->folder . '/' . lcfirst($archivo), $data);
+    }else{
+        error(404);
+    }
+}
+```
+</CodeGroup>
+
+**URL:** `http://example.com/inicio/contact`
+
+**Result:** Loads `Vista/inicio/contact_View.php`
+
+## View Examples
+
+### Example 2: List View
+
+<CodeGroup>
+```php Controller: Product_Controller.php
+public function list($vista, $parametros)
+{
+    $products = $this->Product->getAll();
+    
+    $data = [
+        'products' => $products,
+        'total' => count($products)
+    ];
+    
+    $this->vista('product/list', $data);
+}
+```
+
+```php View: Vista/product/list_View.php
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Product List</title>
+    <link rel="stylesheet" href="<?= RUTA_URL; ?>css/style.css">
+</head>
+<body>
+    <h1>Products (<?php echo $total; ?>)</h1>
+    
+    <?php if ($total > 0): ?>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Price</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($products as $product): ?>
+                    <tr>
+                        <td><?php echo $product['id']; ?></td>
+                        <td><?php echo htmlspecialchars($product['name']); ?></td>
+                        <td>$<?php echo number_format($product['price'], 2); ?></td>
+                        <td>
+                            <a href="<?= RUTA_URL; ?>product/view/<?= $product['id']; ?>">View</a>
+                            <a href="<?= RUTA_URL; ?>product/edit/<?= $product['id']; ?>">Edit</a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php else: ?>
+        <p>No products found.</p>
+    <?php endif; ?>
+</body>
+</html>
+```
+</CodeGroup>
+
+### Example 3: Form View
+
+<CodeGroup>
+```php Controller: Product_Controller.php
+public function create($vista, $parametros)
+{
+    $data = [
+        'title' => 'Create Product',
+        'action' => 'create',
+        'categories' => $this->Category->getAll()
+    ];
+    
+    $this->vista('product/form', $data);
+}
+```
+
+```php View: Vista/product/form_View.php
+<!DOCTYPE html>
+<html>
+<head>
+    <title><?php echo $title; ?></title>
+</head>
+<body>
+    <h1><?php echo $title; ?></h1>
+    
+    <form action="<?= RUTA_URL; ?>product/save" method="POST">
+        <div>
+            <label for="name">Product Name:</label>
+            <input type="text" id="name" name="name" required>
+        </div>
+        
+        <div>
+            <label for="description">Description:</label>
+            <textarea id="description" name="description" rows="4"></textarea>
+        </div>
+        
+        <div>
+            <label for="price">Price:</label>
+            <input type="number" id="price" name="price" step="0.01" required>
+        </div>
+        
+        <div>
+            <label for="category">Category:</label>
+            <select id="category" name="category_id" required>
+                <option value="">Select a category</option>
+                <?php foreach ($categories as $category): ?>
+                    <option value="<?= $category['id']; ?>">
+                        <?= htmlspecialchars($category['name']); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        
+        <button type="submit">Create Product</button>
+    </form>
+</body>
+</html>
+```
+</CodeGroup>
+
+### Example 4: Detail View
+
+<CodeGroup>
+```php Controller: User_Controller.php
+public function view($vista, $parametros)
+{
+    if (empty($parametros[0])) {
+        error(404);
+    }
+    
+    $userId = $parametros[0];
+    $user = $this->User->getById($userId);
+    
+    if (!$user) {
+        error(404);
+    }
+    
+    $data = [
+        'user' => $user,
+        'orders' => $this->Order->getByUser($userId)
+    ];
+    
+    $this->vista('user/detail', $data);
+}
+```
+
+```php View: Vista/user/detail_View.php
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Profile</title>
+</head>
+<body>
+    <div class="user-profile">
+        <h1><?php echo htmlspecialchars($user->name); ?></h1>
+        
+        <div class="user-info">
+            <p><strong>Email:</strong> <?php echo htmlspecialchars($user->email); ?></p>
+            <p><strong>Joined:</strong> <?php echo date('F j, Y', strtotime($user->created_at)); ?></p>
+        </div>
+        
+        <h2>Recent Orders</h2>
+        <?php if (count($orders) > 0): ?>
+            <ul class="order-list">
+                <?php foreach ($orders as $order): ?>
+                    <li>
+                        Order #<?php echo $order['id']; ?> - 
+                        $<?php echo number_format($order['total'], 2); ?>
+                        (<?php echo $order['status']; ?>)
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php else: ?>
+            <p>No orders yet.</p>
+        <?php endif; ?>
+    </div>
+</body>
+</html>
+```
+</CodeGroup>
+
+## Including Partial Views
+
+You can include reusable view components:
+
+<CodeGroup>
+```php Main View
+<!DOCTYPE html>
+<html>
+<head>
+    <?php require_once RUTA_APP . "Includ/head.php"; ?>
+</head>
+<body>
+    <?php require_once RUTA_APP . "Includ/header.php"; ?>
+    
+    <main>
+        <!-- Your content here -->
+    </main>
+    
+    <?php require_once RUTA_APP . "Includ/footer.php"; ?>
+</body>
+</html>
+```
+</CodeGroup>
+
+<Tip>
+**Create an Includ/ Directory**
+
+Store reusable view components like headers, footers, and navigation in an `Includ/` directory.
+</Tip>
+
+## Working with JavaScript
+
+Views can include JavaScript for dynamic behavior:
+
+<CodeGroup>
+```php View with AJAX
+<!DOCTYPE html>
+<html>
+<head>
+    <title>People List</title>
+</head>
+<body>
+    <button id="btnListPeople" onclick="loadPeople()">Load People</button>
+    <div id="peopleList"></div>
+    
+    <script>
+    async function loadPeople() {
+        const btn = document.getElementById('btnListPeople');
+        btn.disabled = true;
+        btn.textContent = 'Loading...';
+        
+        try {
+            const response = await fetch('<?= RUTA_URL; ?>person/list');
+            const result = await response.json();
+            
+            if (result.exito) {
+                displayPeople(result.data);
+            } else {
+                alert(result.mensaje || 'Error loading data');
+            }
+        } catch (error) {
+            alert('Network error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Load People';
+        }
+    }
+    
+    function displayPeople(people) {
+        const container = document.getElementById('peopleList');
+        container.innerHTML = people.map(person => `
+            <div class="person">
+                <h3>${person.name}</h3>
+                <p>${person.email}</p>
+            </div>
+        `).join('');
+    }
+    </script>
+</body>
+</html>
+```
+</CodeGroup>
+
+## Error Views
+
+SwiftFusePHP supports custom error views:
+
+<CodeGroup>
+```php Vista/error/404_View.php
+<!DOCTYPE html>
+<html>
+<head>
+    <title>404 - Page Not Found</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 50px;
+        }
+        h1 { font-size: 72px; color: #e74c3c; }
+        p { font-size: 24px; color: #555; }
+    </style>
+</head>
+<body>
+    <h1>404</h1>
+    <p>Page Not Found</p>
+    <a href="<?= RUTA_URL; ?>">Go Home</a>
+</body>
+</html>
+```
+</CodeGroup>
+
+These are triggered by the `error()` function throughout the framework.
+
+## Asset Management
+
+Link to CSS and JavaScript files using the `RUTA_URL` constant:
+
+<CodeGroup>
+```php Linking Assets
+<!DOCTYPE html>
+<html>
+<head>
+    <!-- CSS -->
+    <link rel="stylesheet" href="<?= RUTA_URL; ?>css/style.css">
+    <link rel="stylesheet" href="<?= RUTA_URL; ?>css/components.css">
+    
+    <!-- JavaScript -->
+    <script src="<?= RUTA_URL; ?>js/app.js"></script>
+    <script src="<?= RUTA_URL; ?>js/utils.js"></script>
+</head>
+<body>
+    <!-- Images -->
+    <img src="<?= RUTA_URL; ?>images/logo.png" alt="Logo">
+</body>
+</html>
+```
+</CodeGroup>
+
+## Security in Views
+
+<Warning>
+**Always Escape User Data**
+
+Use `htmlspecialchars()` to prevent XSS attacks:
+
+```php
+<!-- GOOD -->
+<p><?php echo htmlspecialchars($user->name); ?></p>
+
+<!-- BAD - XSS Vulnerability! -->
+<p><?php echo $user->name; ?></p>
+```
+</Warning>
+
+<CodeGroup>
+```php XSS Prevention
+<!-- Escape text content -->
+<p><?php echo htmlspecialchars($userInput); ?></p>
+
+<!-- Escape attributes -->
+<input type="text" value="<?php echo htmlspecialchars($value); ?>">
+
+<!-- For URLs -->
+<a href="<?php echo htmlspecialchars($url); ?>">Link</a>
+
+<!-- For JSON in JavaScript -->
+<script>
+const data = <?php echo json_encode($data); ?>;
+</script>
+```
+</CodeGroup>
+
+## View Helpers
+
+Create helper functions for common tasks:
+
+<CodeGroup>
+```php helpers.php
+<?php
+
+function formatDate($date) {
+    return date('F j, Y', strtotime($date));
+}
+
+function formatCurrency($amount) {
+    return '$' . number_format($amount, 2);
+}
+
+function avatar($user) {
+    if ($user->avatar) {
+        return RUTA_URL . 'uploads/' . $user->avatar;
+    }
+    return RUTA_URL . 'images/default-avatar.png';
+}
+
+function url($path) {
+    return RUTA_URL . ltrim($path, '/');
+}
+```
+
+```php Using Helpers in Views
+<p>Joined: <?php echo formatDate($user->created_at); ?></p>
+<p>Balance: <?php echo formatCurrency($user->balance); ?></p>
+<img src="<?php echo avatar($user); ?>" alt="Avatar">
+<a href="<?php echo url('user/profile/' . $user->id); ?>">Profile</a>
+```
+</CodeGroup>
+
+## Alternative: HTML Views
+
+SwiftFusePHP supports `.html` views (checked before `.php`):
+
+<CodeGroup>
+```html Vista/inicio/welcome_View.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Welcome</title>
+</head>
+<body>
+    <h1>Welcome to SwiftFusePHP</h1>
+    <p>This is a static HTML view.</p>
+</body>
+</html>
+```
+</CodeGroup>
+
+<Note>
+HTML views cannot execute PHP code or access variables. Use `.php` views for dynamic content.
+</Note>
+
+## Best Practices
+
+<Tip>
+**Separate Logic from Presentation**
+
+Views should only display data, not perform business logic:
+
+```php
+<!-- GOOD -->
+<?php foreach ($users as $user): ?>
+    <p><?php echo $user->name; ?></p>
+<?php endforeach; ?>
+
+<!-- BAD -->
+<?php
+    $users = $User->getAll(); // Logic in view!
+    foreach ($users as $user) {
+        echo $user->name;
+    }
+?>
+```
+</Tip>
+
+<Tip>
+**Use Short Echo Tags**
+
+For cleaner templates:
+
+```php
+<!-- Preferred -->
+<title><?= $title; ?></title>
+
+<!-- Also valid -->
+<title><?php echo $title; ?></title>
+```
+</Tip>
+
+<Tip>
+**Organize by Module**
+
+Group related views in subdirectories:
+
+```
+Vista/
+├── user/
+│   ├── list_View.php
+│   ├── profile_View.php
+│   └── settings_View.php
+└── product/
+    ├── list_View.php
+    └── detail_View.php
+```
+</Tip>
+
+<Warning>
+**Avoid Complex Logic in Views**
+
+Complex calculations and data manipulation belong in controllers or models:
+
+```php
+<!-- GOOD -->
+<p>Total: <?= $total; ?></p>
+
+<!-- BAD -->
+<p>Total: <?= array_sum(array_column($orders, 'amount')) * 1.1; ?></p>
+```
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Understand the complete MVC architecture
+  </Card>
+  <Card title="Controllers" icon="gamepad" href="/controllers">
+    Learn how to pass data to views
+  </Card>
+  <Card title="Models" icon="database" href="/models">
+    Fetch data to display in views
+  </Card>
+  <Card title="Routing" icon="route" href="/routing">
+    Understand how URLs map to views
+  </Card>
+</CardGroup>

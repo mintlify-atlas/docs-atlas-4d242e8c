@@ -1,0 +1,394 @@
+---
+title: 'Advanced Configuration'
+description: 'Deep dive into SwiftFusePHP configuration options and constants'
+---
+
+## Overview
+
+SwiftFusePHP provides extensive configuration options through two main configuration files and several core constants. Understanding these configurations is essential for customizing your application's behavior.
+
+## Configuration Files
+
+### Config/configurar.php
+
+The core configuration file that defines framework constants and utility functions. This file should not be modified as it contains framework-level settings.
+
+**Location:** `Config/configurar.php`
+
+### Config/configurar.user.php
+
+Your application-specific configuration file where you define database connections, environment settings, and custom configurations.
+
+**Location:** `Config/configurar.user.php`
+
+## Core Constants
+
+### Application Path Constants
+
+#### RUTA_APP
+
+Defines the absolute path to your application root directory.
+
+```php
+define("RUTA_APP", dirname(dirname(__FILE__)) . "/");
+```
+
+**Usage Example:**
+```php
+require_once RUTA_APP . "Modelo/Usuario_Model.php";
+$filePath = RUTA_APP . "Archivos/uploads/image.jpg";
+```
+
+#### RUTA_URL
+
+Defines the base URL of your application, automatically configured based on SSL settings and the local directory.
+
+```php
+// Automatically set by is_ssl() function
+define("RUTA_URL", $url);
+```
+
+**Usage Example:**
+```php
+$imageUrl = RUTA_URL . "assets/images/logo.png";
+$apiEndpoint = RUTA_URL . "api/users";
+```
+
+### Framework Version
+
+#### VERSION_SWIFTFUSEPHP
+
+The current version of the SwiftFusePHP framework.
+
+```php
+define("VERSION_SWIFTFUSEPHP", "0.9.3");
+```
+
+### Error Page Constants
+
+These constants define URLs for various error pages, automatically configured based on your RUTA_URL.
+
+#### ERROR404
+
+URL for 404 Not Found errors.
+
+```php
+define("ERROR404", RUTA_URL . "Error/404");
+```
+
+#### ERROR403
+
+URL for 403 Forbidden errors.
+
+```php
+define("ERROR403", RUTA_URL . "Error/403");
+```
+
+#### ERROR400
+
+URL for 400 Bad Request errors.
+
+```php
+define("ERROR400", RUTA_URL . "Error/400");
+```
+
+#### DESARROLLO
+
+URL for development mode page (501 Not Implemented).
+
+```php
+define("DESARROLLO", RUTA_URL . "Error/desarrollo");
+```
+
+#### MANTENIMIENTO
+
+URL for maintenance mode page (503 Service Unavailable).
+
+```php
+define("MANTENIMIENTO", RUTA_URL . "Error/mantenimiento");
+```
+
+## User Configuration Constants
+
+### Database Configuration
+
+Configure your database connection in `Config/configurar.user.php`:
+
+```php
+define("HOST", "localhost");
+define("USERNAME", "remoto");
+define("PASSWORD", "123456");
+define("DATABASE", "framework_test");
+define("SSL_CA", ""); // Path to SSL certificate for secure connections
+```
+
+### Local Directory
+
+#### LOCALDIR
+
+Defines the subdirectory where your application is installed (if not in root).
+
+```php
+define("LOCALDIR", "SwiftFusePHP/");
+```
+
+<Note>
+If your application is installed in the root directory of your domain, set this to an empty string: `define("LOCALDIR", "");`
+</Note>
+
+### Timezone Configuration
+
+Set your application's timezone:
+
+```php
+date_default_timezone_set("America/Bogota");
+```
+
+Available timezones: [PHP Supported Timezones](https://www.php.net/manual/en/timezones.php)
+
+### Language Configuration
+
+```php
+define("LANG", "es");
+```
+
+### Site Information
+
+Define your site's metadata:
+
+```php
+define("NOMBRESITIO", "My Application");
+define("LOGO", RUTA_URL . "assets/logo.png");
+define("LOGOSVG", RUTA_URL . "assets/logo.svg");
+define("EMAIL", "contact@example.com");
+define("VERSION", "0.1");
+```
+
+### reCAPTCHA Configuration
+
+```php
+define("CLAVE_RECAPTCHA_V3", "your-secret-key-here");
+```
+
+## SSL Configuration
+
+### is_ssl() Function
+
+Configures SSL/HTTPS settings for your application. This function must be called in `Config/configurar.user.php`.
+
+#### Parameters
+
+- `$forceSSL` (bool|null): Controls SSL behavior
+  - `true`: Force HTTPS
+  - `false`: Force HTTP
+  - `null`: Auto-detect based on server variables
+
+#### Usage Examples
+
+**Force HTTPS:**
+```php
+is_ssl(true);
+```
+
+**Force HTTP (development):**
+```php
+is_ssl(false);
+```
+
+**Auto-detect (recommended for production):**
+```php
+is_ssl(null);
+```
+
+#### How Auto-Detection Works
+
+When `null` is passed, the function checks:
+1. `$_SERVER['HTTPS']` is set and not 'off'
+2. `$_SERVER['SERVER_PORT']` equals 443
+3. `$_SERVER['HTTP_X_FORWARDED_PROTO']` equals 'https'
+
+```php
+$isHttps =
+    (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
+    (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443) ||
+    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && 
+     $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+```
+
+#### What It Defines
+
+The function automatically sets:
+- `IS_SSL` constant (boolean)
+- `RUTA_URL` constant with correct protocol
+- All error page constants (ERROR404, ERROR403, etc.)
+
+## Error Handling Configuration
+
+### Error Reporting Settings
+
+Configure error handling in `Errores/log.php`:
+
+```php
+define('ENV', 'dev'); // or 'prod'
+define('DISPLAY_ERRORS', TRUE); // Show errors on screen
+define('ERROR_REPORTING', E_ALL | E_STRICT); // Error level
+define('LOG_ERRORS', TRUE); // Write to error.log
+```
+
+<Warning>
+In production, set `DISPLAY_ERRORS` to `FALSE` and `ENV` to `'prod'` to prevent sensitive information exposure.
+</Warning>
+
+### Error Log Location
+
+Errors are logged to:
+```
+Errores/error.log
+```
+
+Example log entry:
+```
+[2026-03-04 10:30:45] [E_ERROR: Database connection failed] [IN FILE Config/configurar.user.php] [LINE 15]
+```
+
+## Custom Configuration Functions
+
+You can add custom configuration functions in `Config/configurar.user.php`:
+
+```php
+function getEstados()
+{
+    return array("Inactivo", "Activo");
+}
+
+function getConfigValue($key)
+{
+    $config = [
+        'items_per_page' => 20,
+        'max_upload_size' => 5242880, // 5MB
+        'allowed_extensions' => ['jpg', 'png', 'pdf']
+    ];
+    return $config[$key] ?? null;
+}
+```
+
+## Environment-Specific Configuration
+
+Create environment-specific configurations:
+
+```php
+// Development
+if (ENV === 'dev') {
+    define("HOST", "localhost");
+    define("DATABASE", "framework_dev");
+    is_ssl(false);
+}
+
+// Production
+if (ENV === 'prod') {
+    define("HOST", "prod-server.com");
+    define("DATABASE", "framework_prod");
+    is_ssl(true);
+}
+```
+
+## Configuration Best Practices
+
+### 1. Separate Sensitive Data
+
+Never commit sensitive credentials to version control. Use environment variables or a separate config file:
+
+```php
+// .env.php (add to .gitignore)
+define("DB_PASSWORD", "your-secure-password");
+define("RECAPTCHA_SECRET", "your-recaptcha-secret");
+
+define("API_KEY", "your-api-key");
+```
+
+```php
+// Config/configurar.user.php
+if (file_exists(RUTA_APP . '.env.php')) {
+    require_once RUTA_APP . '.env.php';
+}
+```
+
+### 2. Use Constants for Paths
+
+Always use `RUTA_APP` for file system paths and `RUTA_URL` for URLs:
+
+```php
+// Correct
+$file = RUTA_APP . "Archivos/document.pdf";
+$link = RUTA_URL . "download/document";
+
+// Incorrect
+$file = "../Archivos/document.pdf"; // Brittle
+$link = "http://example.com/download/document"; // Hard-coded
+```
+
+### 3. Database SSL Configuration
+
+For secure database connections, provide the SSL certificate path:
+
+```php
+define("SSL_CA", "/path/to/ca-certificate.pem");
+```
+
+The framework automatically configures PDO with SSL when `SSL_CA` is set:
+```php
+if ($this->ssl_ca) {
+    $opciones[PDO::MYSQL_ATTR_SSL_CA] = $this->ssl_ca;
+}
+```
+
+### 4. Timezone Considerations
+
+Set timezone before any date operations:
+
+```php
+// Must be set before date() or DateTime usage
+date_default_timezone_set("America/New_York");
+```
+
+### 5. Configuration Validation
+
+Validate critical configurations on initialization:
+
+```php
+if (!defined('HOST') || !defined('DATABASE')) {
+    handler(E_ERROR, "Database configuration missing", __FILE__, __LINE__);
+}
+
+if (!file_exists(RUTA_APP . "Modelo/")) {
+    handler(E_ERROR, "Required directory structure missing", __FILE__, __LINE__);
+}
+```
+
+## Loading Order
+
+Understand the configuration loading sequence from `index.php`:
+
+```php
+1. Errores/log.php          // Error handler setup
+2. Config/configurar.php    // Framework configuration
+3. Config/configurar.user.php // User configuration
+4. Modelo/Conexion_Model.php  // Database connection
+5. Libreria/Controlador.php   // Controller base class
+6. Libreria/Core.php         // Routing engine
+```
+
+<Tip>
+Custom configurations in `configurar.user.php` can override or extend framework defaults, but core constants like `RUTA_APP` should not be redefined.
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Extending Framework" icon="puzzle-piece" href="/extending">
+    Learn how to extend base classes
+  </Card>
+  <Card title="Best Practices" icon="star" href="/best-practices">
+    Explore recommended patterns
+  </Card>
+</CardGroup>

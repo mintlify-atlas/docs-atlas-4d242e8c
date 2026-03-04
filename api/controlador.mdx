@@ -1,0 +1,422 @@
+---
+title: 'Controlador'
+description: 'Base controller class for all application controllers'
+icon: 'code'
+---
+
+## Overview
+
+The `Controlador` class is an abstract base class that all controllers in SwiftFusePHP must extend. It provides essential methods for loading models, rendering views, and handling JSON responses.
+
+## Location
+
+```
+Libreria/Controlador.php
+```
+
+## Class Properties
+
+<ResponseField name="retorno" type="array">
+  Standard response array for JSON responses
+  
+  ```php
+  [
+      "mensaje" => null,
+      "exito" => false,
+      "data" => null
+  ]
+  ```
+</ResponseField>
+
+<ResponseField name="folder" type="string" default="">
+  The folder path where view files are located for this controller
+  
+  **Must be defined in child controllers:**
+  ```php
+  protected $folder = "usuarios";
+  ```
+</ResponseField>
+
+## Public Methods
+
+### cargaVista()
+
+Default method called by the Core router when no specific method is matched. Loads a view file if no URL parameters are present.
+
+```php
+public function cargaVista(string $archivo, array $data): void
+```
+
+<ParamField path="archivo" type="string" required>
+  Name of the view file to load (without extension)
+</ParamField>
+
+<ParamField path="data" type="array" required>
+  Parameters from the URL. Must be empty array, or 404 error is triggered
+</ParamField>
+
+**Behavior:**
+- If `$data` is empty: loads the view from `{$folder}/{$archivo}`
+- If `$data` has elements: triggers 404 error
+- Can be overridden in child controllers for custom behavior
+
+**Example:**
+
+```php
+class UsuariosControl extends Controlador {
+    protected $folder = "usuarios";
+    
+    // Override default behavior
+    public function cargaVista($archivo, $data) {
+        // Custom logic before loading view
+        if ($archivo === 'admin') {
+            // Check permissions
+        }
+        parent::cargaVista($archivo, $data);
+    }
+}
+
+// URL: /usuarios/perfil
+// Calls: cargaVista('perfil', [])
+// Loads: Vista/usuarios/perfil_View.html or .php
+```
+
+### modelo()
+
+Loads and instantiates a model class.
+
+```php
+public function modelo(string $modelo): Object
+```
+
+<ParamField path="modelo" type="string" required>
+  Name of the model to load (without `_Model` suffix)
+  
+  Supports subdirectories: `"subfolder/ModelName"`
+</ParamField>
+
+**Returns:**
+<ResponseField name="model" type="object">
+  Instantiated model object
+</ResponseField>
+
+**Example:**
+
+```php
+class UsuariosControl extends Controlador {
+    public function listar() {
+        // Load Usuario model
+        $usuarioModel = $this->modelo("Usuario");
+        $usuarios = $usuarioModel->getAll();
+        
+        // Load model from subdirectory
+        $reporteModel = $this->modelo("reportes/Usuario");
+        
+        return $usuarios;
+    }
+}
+```
+
+**Model File Naming:**
+- File: `Modelo/{Name}_Model.php`
+- Class: `{Name}Mode extends Model`
+
+```php
+// Modelo/Usuario_Model.php
+class UsuarioMode extends Model {
+    // Model logic
+}
+```
+
+### vista()
+
+Renders a view file. Searches for `.html` files first, then `.php` files.
+
+```php
+public function vista(string $vista, array $parametro = []): void
+```
+
+<ParamField path="vista" type="string" required>
+  Path to the view file relative to `Vista/` directory (without extension)
+</ParamField>
+
+<ParamField path="parametro" type="array" default="[]">
+  Associative array of variables to make available in the view
+</ParamField>
+
+**View Resolution Priority:**
+1. Searches for `Vista/{$vista}_View.html`
+2. If not found, searches for `Vista/{$vista}_View.php`
+3. If neither exists, triggers 404 error
+
+**Example:**
+
+```php
+class ProductosControl extends Controlador {
+    protected $folder = "productos";
+    
+    public function detalle($vista, $params) {
+        $id = $params[0];
+        $productoModel = $this->modelo("Producto");
+        $producto = $productoModel->getById($id);
+        
+        // Load Vista/productos/detalle_View.html or .php
+        // Variables $producto and $id available in view
+        $this->vista(
+            $this->folder . '/detalle', 
+            [
+                'producto' => $producto,
+                'id' => $id
+            ]
+        );
+    }
+}
+```
+
+**In the View File:**
+
+```php
+<!-- Vista/productos/detalle_View.html -->
+<h1><?php echo $producto->nombre; ?></h1>
+<p>ID: <?php echo $id; ?></p>
+<p><?php echo $producto->descripcion; ?></p>
+```
+
+## Protected Methods
+
+### retornar()
+
+Outputs the `$retorno` property as JSON and terminates execution.
+
+```php
+protected function retornar(): void
+```
+
+**Output Format:**
+```json
+{
+    "mensaje": "string or null",
+    "exito": boolean,
+    "data": "mixed or null"
+}
+```
+
+**Example:**
+
+```php
+class UsuariosControl extends Controlador {
+    public function crear() {
+        $nombre = $_POST['nombre'];
+        $email = $_POST['email'];
+        
+        $usuarioModel = $this->modelo("Usuario");
+        $resultado = $usuarioModel->insert($nombre, $email);
+        
+        if ($resultado) {
+            $this->retorno['exito'] = true;
+            $this->retorno['mensaje'] = "Usuario creado exitosamente";
+            $this->retorno['data'] = ['id' => $resultado];
+        } else {
+            $this->retorno['exito'] = false;
+            $this->retorno['mensaje'] = "Error al crear usuario";
+        }
+        
+        $this->retornar(); // Outputs JSON and dies
+    }
+}
+```
+
+**AJAX Request Example:**
+
+```javascript
+fetch('/usuarios/crear', {
+    method: 'POST',
+    body: new FormData(form)
+})
+.then(response => response.json())
+.then(data => {
+    if (data.exito) {
+        console.log(data.mensaje); // "Usuario creado exitosamente"
+        console.log(data.data.id); // New user ID
+    }
+});
+```
+
+## Creating a Controller
+
+### Basic Controller Structure
+
+```php
+<?php
+// Controlador/Productos_Controller.php
+
+class ProductosControl extends Controlador {
+    protected $folder = "productos";
+    
+    // Default view loader
+    public function cargaVista($archivo, $data) {
+        if (count($data) == 0) {
+            $this->vista($this->folder . '/' . lcfirst($archivo), $data);
+        } else {
+            error(404);
+        }
+    }
+    
+    // Custom method
+    public function listar($vista, $params) {
+        $productoModel = $this->modelo("Producto");
+        $productos = $productoModel->getAll();
+        
+        $this->vista($this->folder . '/listar', [
+            'productos' => $productos
+        ]);
+    }
+    
+    // API endpoint
+    public function api_crear() {
+        $nombre = filterINPUT($_POST['nombre']);
+        $precio = filterINPUT($_POST['precio']);
+        
+        $productoModel = $this->modelo("Producto");
+        $id = $productoModel->insert($nombre, $precio);
+        
+        if ($id) {
+            $this->retorno['exito'] = true;
+            $this->retorno['mensaje'] = "Producto creado";
+            $this->retorno['data'] = ['id' => $id];
+        } else {
+            $this->retorno['exito'] = false;
+            $this->retorno['mensaje'] = $productoModel->getMensaje();
+        }
+        
+        $this->retornar();
+    }
+}
+```
+
+## Controller Patterns
+
+<AccordionGroup>
+  <Accordion title="View Controllers">
+    Controllers that render HTML views:
+    
+    ```php
+    class PaginasControl extends Controlador {
+        protected $folder = "paginas";
+        
+        public function inicio($vista, $params) {
+            $this->vista($this->folder . '/inicio');
+        }
+        
+        public function contacto($vista, $params) {
+            $this->vista($this->folder . '/contacto');
+        }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="API Controllers">
+    Controllers that return JSON responses:
+    
+    ```php
+    class ApiControl extends Controlador {
+        protected $folder = "";
+        
+        public function usuarios($vista, $params) {
+            $usuarioModel = $this->modelo("Usuario");
+            $usuarios = $usuarioModel->getAll();
+            
+            $this->retorno['exito'] = true;
+            $this->retorno['data'] = $usuarios;
+            $this->retornar();
+        }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Mixed Controllers">
+    Controllers with both views and API endpoints:
+    
+    ```php
+    class UsuariosControl extends Controlador {
+        protected $folder = "usuarios";
+        
+        // View
+        public function lista($vista, $params) {
+            $this->vista($this->folder . '/lista');
+        }
+        
+        // API
+        public function api_obtener($vista, $params) {
+            $id = $params[0];
+            $model = $this->modelo("Usuario");
+            
+            $this->retorno['data'] = $model->getById($id);
+            $this->retorno['exito'] = true;
+            $this->retornar();
+        }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Inheritance
+
+Controlador extends `ControladorUser`, which can be customized:
+
+```php
+// Libreria/Controlador.user.php
+class ControladorUser {
+    // Add custom methods available to all controllers
+    
+    protected function requireAuth() {
+        if (!isset($_SESSION['user'])) {
+            error(403);
+        }
+    }
+    
+    protected function getUser() {
+        return $_SESSION['user'] ?? null;
+    }
+}
+```
+
+Use in controllers:
+
+```php
+class PanelControl extends Controlador {
+    protected $folder = "panel";
+    
+    public function admin($vista, $params) {
+        $this->requireAuth(); // From ControladorUser
+        $user = $this->getUser();
+        
+        $this->vista($this->folder . '/admin', [
+            'user' => $user
+        ]);
+    }
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Always Set $folder" icon="folder">
+    Define the protected `$folder` property in every controller
+  </Card>
+  <Card title="Filter Input" icon="filter">
+    Use `filterINPUT()` for all user input
+  </Card>
+  <Card title="Handle Errors" icon="triangle-exclamation">
+    Check model results and provide clear error messages
+  </Card>
+  <Card title="Consistent Naming" icon="signature">
+    Use descriptive method names that reflect their purpose
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [Core](/api/core) - URL routing system
+- [Model](/api/model) - Base model class
+- [Functions](/api/functions) - Helper functions like `filterINPUT()`

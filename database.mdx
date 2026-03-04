@@ -1,0 +1,406 @@
+---
+title: Database Operations
+description: Learn how to work with the PDO-based database layer in SwiftFusePHP
+---
+
+SwiftFusePHP provides a robust database abstraction layer built on top of PDO, offering prepared statements, transactions, and connection management.
+
+## Connection Class
+
+The `Conexion` class (located in `Modelo/Conexion_Model.php`) handles all database operations. It's automatically instantiated when extending the `Model` abstract class.
+
+### Configuration
+
+Database credentials are defined in `Config/configurar.user.php`:
+
+```php
+define("HOST", "localhost");
+define("USERNAME", "remoto");
+define("PASSWORD", "123456");
+define("DATABASE", "framework_test");
+define("SSL_CA", ""); // Optional SSL certificate path
+```
+
+## Basic Query Execution
+
+### Prepared Statements
+
+The framework uses PDO prepared statements to prevent SQL injection attacks.
+
+<CodeGroup>
+```php Simple SELECT
+// In your Model class
+public function getAll() {
+    $data = array();
+    try {
+        $this->Conexion->query("SELECT * FROM people;");
+        $data = $this->Conexion->getsArray();
+    } catch(PDOException $ex) {
+        $this->mensaje = $ex->getMessage();
+    }
+    return $data;
+}
+```
+
+```php Parameterized Query
+public function getUserById($id) {
+    $this->Conexion->query("SELECT * FROM users WHERE id = :id");
+    $this->Conexion->bind(':id', $id);
+    return $this->Conexion->getObject();
+}
+```
+
+```php INSERT with Multiple Parameters
+public function createUser($name, $email, $age) {
+    $this->Conexion->query(
+        "INSERT INTO users (name, email, age) VALUES (:name, :email, :age)"
+    );
+    $this->Conexion->bind(':name', $name);
+    $this->Conexion->bind(':email', $email);
+    $this->Conexion->bind(':age', $age);
+    return $this->Conexion->execute();
+}
+```
+</CodeGroup>
+
+## Core Methods
+
+### query()
+
+Prepares a SQL statement for execution.
+
+<ParamField path="sql" type="string" required>
+  The SQL query to prepare
+</ParamField>
+
+```php
+$this->Conexion->query("SELECT * FROM users WHERE email = :email");
+```
+
+### bind()
+
+Binds parameters to the prepared statement with automatic type detection.
+
+<ParamField path="parametro" type="string" required>
+  The parameter name (e.g., `:nombre`)
+</ParamField>
+
+<ParamField path="valor" type="mixed" required>
+  The value to bind
+</ParamField>
+
+<ParamField path="tipo" type="int" default="null">
+  PDO parameter type (auto-detected if null)
+</ParamField>
+
+```php
+$this->Conexion->bind(':email', $email); // Auto-detects type
+$this->Conexion->bind(':id', $id, PDO::PARAM_INT); // Explicit type
+```
+
+<Note>
+The `bind()` method automatically detects data types:
+- `int` → `PDO::PARAM_INT`
+- `bool` → `PDO::PARAM_BOOL`
+- `null` → `PDO::PARAM_NULL`
+- `array` → Converts to JSON string with `PDO::PARAM_STR`
+- Default → `PDO::PARAM_STR`
+</Note>
+
+### execute()
+
+Executes the prepared statement.
+
+```php
+if ($this->Conexion->execute()) {
+    // Success
+} else {
+    $error = $this->Conexion->getError();
+}
+```
+
+**Returns:** `bool` - `true` on success, `false` on failure
+
+## Fetching Results
+
+### getObjects()
+
+Returns all results as an array of objects.
+
+```php
+$this->Conexion->query("SELECT * FROM users");
+$users = $this->Conexion->getObjects();
+
+foreach ($users as $user) {
+    echo $user->name;
+}
+```
+
+**Returns:** `array` of `stdClass` objects
+
+### getObject()
+
+Returns a single result as an object.
+
+```php
+$this->Conexion->query("SELECT * FROM users WHERE id = :id");
+$this->Conexion->bind(':id', $id);
+$user = $this->Conexion->getObject();
+
+if ($user) {
+    echo $user->email;
+}
+```
+
+**Returns:** `object|null`
+
+### getsArray()
+
+Returns all results as an associative array.
+
+```php
+$this->Conexion->query("SELECT * FROM users");
+$users = $this->Conexion->getsArray();
+
+foreach ($users as $user) {
+    echo $user['name'];
+}
+```
+
+**Returns:** `array` of associative arrays
+
+### getArray()
+
+Returns a single result as an associative array.
+
+```php
+$this->Conexion->query("SELECT * FROM users WHERE id = :id");
+$this->Conexion->bind(':id', $id);
+$user = $this->Conexion->getArray();
+
+if ($user) {
+    echo $user['email'];
+}
+```
+
+**Returns:** `array|null`
+
+### getRecord()
+
+Returns the number of affected rows.
+
+```php
+$this->Conexion->query("DELETE FROM users WHERE status = :status");
+$this->Conexion->bind(':status', 'inactive');
+$this->Conexion->execute();
+
+$deletedCount = $this->Conexion->getRecord();
+echo "Deleted {$deletedCount} users";
+```
+
+**Returns:** `int`
+
+## Transactions
+
+Transactions ensure data consistency by allowing you to commit or rollback multiple operations.
+
+### transaction()
+
+Starts a database transaction.
+
+```php
+$this->Conexion->transaction();
+```
+
+### commit()
+
+Commits all operations in the transaction.
+
+```php
+if ($this->Conexion->commit()) {
+    // Transaction successful
+}
+```
+
+**Returns:** `bool`
+
+### rollBack()
+
+Rolls back all operations in the transaction.
+
+```php
+$this->Conexion->rollBack();
+```
+
+### Complete Transaction Example
+
+```php
+public function transferFunds($fromUserId, $toUserId, $amount) {
+    try {
+        // Start transaction
+        $this->Conexion->transaction();
+        
+        // Deduct from sender
+        $this->Conexion->query(
+            "UPDATE accounts SET balance = balance - :amount WHERE user_id = :id"
+        );
+        $this->Conexion->bind(':amount', $amount);
+        $this->Conexion->bind(':id', $fromUserId);
+        $this->Conexion->execute();
+        
+        // Add to receiver
+        $this->Conexion->query(
+            "UPDATE accounts SET balance = balance + :amount WHERE user_id = :id"
+        );
+        $this->Conexion->bind(':amount', $amount);
+        $this->Conexion->bind(':id', $toUserId);
+        $this->Conexion->execute();
+        
+        // Commit transaction
+        if ($this->Conexion->commit()) {
+            return true;
+        }
+    } catch (PDOException $ex) {
+        // Rollback on error
+        $this->Conexion->rollBack();
+        $this->mensaje = $ex->getMessage();
+        return false;
+    }
+}
+```
+
+### executeTransaction()
+
+Executes a query within a transaction context.
+
+```php
+$this->Conexion->transaction();
+$success = $this->Conexion->executeTransaction("UPDATE users SET status = 'active'");
+if ($success) {
+    $this->Conexion->commit();
+} else {
+    $this->Conexion->rollBack();
+}
+```
+
+### isTransactionActive()
+
+Checks if a transaction is currently active.
+
+```php
+if ($this->Conexion->isTransactionActive()) {
+    // Transaction in progress
+}
+```
+
+**Returns:** `bool`
+
+## Error Handling
+
+### getError()
+
+Returns the last error message from PDO.
+
+```php
+if (!$this->Conexion->execute()) {
+    $error = $this->Conexion->getError();
+    handler(E_ERROR, $error, __FILE__, __LINE__);
+}
+```
+
+**Returns:** `string|null`
+
+<Warning>
+When inside a transaction, exceptions are automatically thrown on errors. Outside transactions, `execute()` returns `false` and errors must be checked manually using `getError()`.
+</Warning>
+
+## Connection Management
+
+### isConnected()
+
+Verifies the database connection is active and reconnects if needed.
+
+```php
+$this->Conexion->isConnected();
+```
+
+This method is useful for long-running scripts to ensure the connection hasn't timed out.
+
+## Model Pattern
+
+All models should extend the `Model` abstract class, which automatically provides a `$Conexion` property.
+
+```php
+require_once RUTA_APP . "Modelo/Model_Abstract.php";
+
+class PersonMode extends Model {
+    public function __construct() {
+        parent::__construct();
+        
+        if ($this->Conexion->getError() != null) {
+            handler(E_ERROR, $this->Conexion->getError(), __FILE__, __LINE__);
+        }
+    }
+    
+    public function getAll() {
+        $data = array();
+        try {
+            $this->Conexion->query("CALL PR_getAllPeople();");
+            
+            if ($this->Conexion->getRecord() == 0) {
+                $this->mensaje = "No people found";
+            } else {
+                $data = $this->Conexion->getsArray();
+            }
+        } catch(PDOException $ex) {
+            $this->mensaje = $ex->getMessage();
+        }
+        return $data;
+    }
+}
+```
+
+## Stored Procedures
+
+You can call stored procedures directly:
+
+```php
+$this->Conexion->query("CALL PR_getAllPeople();");
+$results = $this->Conexion->getsArray();
+```
+
+```php
+$this->Conexion->query("CALL PR_CreateUser(:name, :email);");
+$this->Conexion->bind(':name', $name);
+$this->Conexion->bind(':email', $email);
+$this->Conexion->execute();
+```
+
+## Security Features
+
+<Note>
+**Built-in SQL Injection Protection**
+
+All queries use PDO prepared statements with parameter binding, providing automatic protection against SQL injection attacks. Never concatenate user input directly into SQL queries.
+</Note>
+
+### SSL Connections
+
+Enable SSL for database connections by setting the `SSL_CA` constant:
+
+```php
+define("SSL_CA", "/path/to/ca-cert.pem");
+```
+
+### Persistent Connections
+
+The connection class uses persistent connections by default (`PDO::ATTR_PERSISTENT => true`) for improved performance.
+
+## Best Practices
+
+1. **Always use parameter binding** - Never concatenate user input into queries
+2. **Use transactions for multi-step operations** - Ensures data consistency
+3. **Check for errors** - Always handle potential failures gracefully
+4. **Use appropriate fetch methods** - Choose between objects, arrays, or single results based on your needs
+5. **Leverage stored procedures** - For complex database logic
+6. **Close transactions properly** - Always commit or rollback

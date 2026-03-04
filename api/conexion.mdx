@@ -1,0 +1,628 @@
+---
+title: 'Conexion'
+description: 'PDO-based MySQL database connection class'
+icon: 'plug'
+---
+
+## Overview
+
+The `Conexion` class handles all database operations in SwiftFusePHP using PDO (PHP Data Objects). It provides methods for executing queries, binding parameters, fetching results, and managing transactions.
+
+## Location
+
+```
+Modelo/Conexion_Model.php
+```
+
+## Class Properties
+
+<ResponseField name="host" type="string">
+  Database host from HOST constant
+</ResponseField>
+
+<ResponseField name="usuario" type="string">
+  Database username from USERNAME constant
+</ResponseField>
+
+<ResponseField name="password" type="string">
+  Database password from PASSWORD constant
+</ResponseField>
+
+<ResponseField name="database" type="string">
+  Database name from DATABASE constant
+</ResponseField>
+
+<ResponseField name="ssl_ca" type="string">
+  SSL certificate path from SSL_CA constant (optional)
+</ResponseField>
+
+<ResponseField name="dbh" type="PDO">
+  PDO database handle instance
+</ResponseField>
+
+<ResponseField name="stmt" type="PDOStatement">
+  Prepared statement object
+</ResponseField>
+
+<ResponseField name="error" type="string|null" default="null">
+  Stores error messages from failed operations
+</ResponseField>
+
+<ResponseField name="isExecuted" type="bool" default="false">
+  Tracks whether current statement has been executed
+</ResponseField>
+
+## Constructor
+
+### __construct()
+
+Establishes a PDO connection to the MySQL database.
+
+```php
+public function __construct()
+```
+
+**Connection Configuration:**
+- Uses persistent connections (`PDO::ATTR_PERSISTENT`)
+- Sets error mode to exceptions (`PDO::ERRMODE_EXCEPTION`)
+- Supports SSL/TLS connections if `SSL_CA` is configured
+- Uses UTF-8 character encoding
+
+**Error Handling:**
+- Catches `PDOException` on connection failure
+- Stores error message in `$this->error` property
+- Does not terminate execution (allows error checking)
+
+**Example:**
+
+```php
+$conexion = new Conexion();
+
+if ($conexion->getError() != null) {
+    die("Connection failed: " . $conexion->getError());
+}
+```
+
+## Query Preparation Methods
+
+### query()
+
+Prepares an SQL statement for execution.
+
+```php
+public function query(string $sql): void
+```
+
+<ParamField path="sql" type="string" required>
+  SQL query with optional named placeholders (`:parameter`)
+</ParamField>
+
+**Example:**
+
+```php
+$conexion->query("SELECT * FROM usuarios WHERE id = :id");
+$conexion->query("INSERT INTO productos (nombre, precio) VALUES (:nombre, :precio)");
+```
+
+### bind()
+
+Binds a value to a named parameter in the prepared statement.
+
+```php
+public function bind(string $parametro, mixed $valor, int|null $tipo = null): void
+```
+
+<ParamField path="parametro" type="string" required>
+  Parameter name with colon prefix (`:nombre`)
+</ParamField>
+
+<ParamField path="valor" type="mixed" required>
+  Value to bind to the parameter
+</ParamField>
+
+<ParamField path="tipo" type="int|null" default="null">
+  PDO parameter type. Auto-detected if not specified.
+  
+  - `PDO::PARAM_INT` - Integer
+  - `PDO::PARAM_BOOL` - Boolean
+  - `PDO::PARAM_NULL` - NULL
+  - `PDO::PARAM_STR` - String (default)
+</ParamField>
+
+**Type Auto-Detection:**
+- Integers → `PDO::PARAM_INT`
+- Booleans → `PDO::PARAM_BOOL`
+- NULL values → `PDO::PARAM_NULL`
+- Arrays → `PDO::PARAM_STR` (JSON encoded)
+- Everything else → `PDO::PARAM_STR`
+
+**Example:**
+
+```php
+$conexion->query("SELECT * FROM usuarios WHERE id = :id AND activo = :activo");
+$conexion->bind(':id', 5); // Auto-detected as INT
+$conexion->bind(':activo', true); // Auto-detected as BOOL
+$conexion->execute();
+
+// Binding arrays (converted to JSON)
+$conexion->query("INSERT INTO logs (datos) VALUES (:datos)");
+$conexion->bind(':datos', ['user' => 'john', 'action' => 'login']); // Stored as JSON
+$conexion->execute();
+```
+
+## Execution Methods
+
+### execute()
+
+Executes the prepared statement.
+
+```php
+public function execute(): bool
+```
+
+**Returns:**
+<ResponseField name="success" type="bool">
+  `true` if execution succeeded, `false` if an error occurred
+</ResponseField>
+
+**Error Handling:**
+- Catches `PDOException` and stores in `$this->error`
+- Re-throws exception if inside a transaction
+- Returns `false` if not in transaction
+
+**Example:**
+
+```php
+$conexion->query("INSERT INTO usuarios (nombre) VALUES (:nombre)");
+$conexion->bind(':nombre', 'Juan');
+
+if ($conexion->execute()) {
+    echo "Insert successful";
+} else {
+    echo "Error: " . $conexion->getError();
+}
+```
+
+### getError()
+
+Retrieves the last error message.
+
+```php
+public function getError(): string|null
+```
+
+**Returns:**
+<ResponseField name="error" type="string|null">
+  Error message or null if no error
+</ResponseField>
+
+**Example:**
+
+```php
+if (!$conexion->execute()) {
+    $errorMsg = $conexion->getError();
+    error_log("Database error: " . $errorMsg);
+}
+```
+
+## Data Retrieval Methods
+
+### getObjects()
+
+Fetches all rows as an array of objects.
+
+```php
+public function getObjects(): array
+```
+
+**Returns:**
+<ResponseField name="results" type="array">
+  Array of stdClass objects, each representing a row
+</ResponseField>
+
+**Example:**
+
+```php
+$conexion->query("SELECT * FROM usuarios");
+$usuarios = $conexion->getObjects();
+
+foreach ($usuarios as $usuario) {
+    echo $usuario->nombre . " - " . $usuario->email;
+}
+```
+
+### getObject()
+
+Fetches a single row as an object.
+
+```php
+public function getObject(): object|null
+```
+
+**Returns:**
+<ResponseField name="result" type="object|null">
+  stdClass object representing the row, or null if no results
+</ResponseField>
+
+**Example:**
+
+```php
+$conexion->query("SELECT * FROM usuarios WHERE id = :id");
+$conexion->bind(':id', 5);
+$usuario = $conexion->getObject();
+
+if ($usuario) {
+    echo $usuario->nombre;
+} else {
+    echo "Usuario no encontrado";
+}
+```
+
+### getArray()
+
+Fetches a single row as an associative array.
+
+```php
+public function getArray(): array|null
+```
+
+**Returns:**
+<ResponseField name="result" type="array|null">
+  Associative array representing the row, or null if no results
+</ResponseField>
+
+**Example:**
+
+```php
+$conexion->query("SELECT * FROM productos WHERE id = :id");
+$conexion->bind(':id', 10);
+$producto = $conexion->getArray();
+
+if ($producto) {
+    echo $producto['nombre']; // Array access
+}
+```
+
+### getsArray()
+
+Fetches all rows as an array of associative arrays.
+
+```php
+public function getsArray(): array
+```
+
+**Returns:**
+<ResponseField name="results" type="array">
+  Array of associative arrays, each representing a row
+</ResponseField>
+
+**Example:**
+
+```php
+$conexion->query("SELECT id, nombre, precio FROM productos");
+$productos = $conexion->getsArray();
+
+foreach ($productos as $producto) {
+    echo $producto['nombre'] . ": $" . $producto['precio'];
+}
+```
+
+### getRecord()
+
+Returns the number of rows affected by the last operation.
+
+```php
+public function getRecord(): int
+```
+
+**Returns:**
+<ResponseField name="count" type="int">
+  Number of affected rows
+</ResponseField>
+
+**Example:**
+
+```php
+$conexion->query("DELETE FROM usuarios WHERE activo = :activo");
+$conexion->bind(':activo', false);
+$conexion->execute();
+
+$deleted = $conexion->getRecord();
+echo "Deleted {$deleted} users";
+```
+
+## Connection Management
+
+### isConnected()
+
+Checks if the database connection is active and reconnects if necessary.
+
+```php
+public function isConnected(): void
+```
+
+**Behavior:**
+- Executes a test query (`SELECT 1`)
+- If connection is lost, calls constructor to reconnect
+- Useful for long-running scripts
+
+**Example:**
+
+```php
+$conexion->isConnected(); // Ensure connection is alive
+$conexion->query("SELECT * FROM usuarios");
+$usuarios = $conexion->getObjects();
+```
+
+## Transaction Methods
+
+### transaction()
+
+Starts a new database transaction.
+
+```php
+public function transaction(): void
+```
+
+**Example:**
+
+```php
+$conexion->transaction();
+// Multiple operations...
+```
+
+### executeTransaction()
+
+Executes a query within a transaction context.
+
+```php
+public function executeTransaction(string $sql): bool
+```
+
+<ParamField path="sql" type="string" required>
+  SQL statement to execute
+</ParamField>
+
+**Returns:**
+<ResponseField name="success" type="bool">
+  `true` if execution succeeded, `false` otherwise
+</ResponseField>
+
+**Example:**
+
+```php
+$conexion->transaction();
+
+$result1 = $conexion->executeTransaction(
+    "INSERT INTO pedidos (usuario_id) VALUES (5)"
+);
+
+$result2 = $conexion->executeTransaction(
+    "UPDATE inventario SET cantidad = cantidad - 1 WHERE producto_id = 10"
+);
+
+if ($result1 && $result2) {
+    $conexion->commit();
+} else {
+    $conexion->rollBack();
+}
+```
+
+### commit()
+
+Commits the current transaction.
+
+```php
+public function commit(): bool
+```
+
+**Returns:**
+<ResponseField name="success" type="bool">
+  `true` if commit succeeded, `false` otherwise
+</ResponseField>
+
+**Example:**
+
+```php
+if ($conexion->commit()) {
+    echo "Transaction committed successfully";
+} else {
+    echo "Commit failed: " . $conexion->getError();
+}
+```
+
+### rollBack()
+
+Rolls back the current transaction.
+
+```php
+public function rollBack(): void
+```
+
+**Example:**
+
+```php
+try {
+    $conexion->transaction();
+    
+    // Operations...
+    
+    $conexion->commit();
+} catch (Exception $e) {
+    $conexion->rollBack();
+    echo "Transaction failed: " . $e->getMessage();
+}
+```
+
+### isTransactionActive()
+
+Checks if a transaction is currently active.
+
+```php
+public function isTransactionActive(): bool
+```
+
+**Returns:**
+<ResponseField name="active" type="bool">
+  `true` if transaction is active, `false` otherwise
+</ResponseField>
+
+**Example:**
+
+```php
+if ($conexion->isTransactionActive()) {
+    echo "Transaction in progress";
+}
+```
+
+## Deprecated Methods
+
+### exec()
+
+<Warning>
+  **Deprecated:** Use `executeTransaction()` instead
+</Warning>
+
+```php
+public function exec(string $sql): void
+```
+
+## Complete Usage Examples
+
+### Basic Query
+
+```php
+$conexion = new Conexion();
+
+// SELECT query
+$conexion->query("SELECT * FROM usuarios WHERE activo = :activo");
+$conexion->bind(':activo', true);
+$usuarios = $conexion->getObjects();
+
+foreach ($usuarios as $usuario) {
+    echo $usuario->nombre . "<br>";
+}
+```
+
+### Insert with Error Handling
+
+```php
+$conexion = new Conexion();
+
+$conexion->query("INSERT INTO productos (nombre, precio) VALUES (:nombre, :precio)");
+$conexion->bind(':nombre', 'Laptop');
+$conexion->bind(':precio', 999.99);
+
+if ($conexion->execute()) {
+    echo "Producto insertado";
+} else {
+    echo "Error: " . $conexion->getError();
+}
+```
+
+### Update Operation
+
+```php
+$conexion = new Conexion();
+
+$conexion->query("UPDATE usuarios SET nombre = :nombre WHERE id = :id");
+$conexion->bind(':id', 5);
+$conexion->bind(':nombre', 'Juan Pérez');
+
+if ($conexion->execute()) {
+    $affected = $conexion->getRecord();
+    echo "Actualizado {$affected} registro(s)";
+}
+```
+
+### Transaction Example
+
+```php
+$conexion = new Conexion();
+
+try {
+    // Start transaction
+    $conexion->transaction();
+    
+    // Insert order
+    $conexion->query("INSERT INTO pedidos (usuario_id, total) VALUES (:usuario_id, :total)");
+    $conexion->bind(':usuario_id', 10);
+    $conexion->bind(':total', 150.00);
+    $conexion->execute();
+    
+    // Update inventory
+    $conexion->executeTransaction("UPDATE productos SET stock = stock - 1 WHERE id = 5");
+    
+    // Insert notification
+    $conexion->executeTransaction("INSERT INTO notificaciones (mensaje) VALUES ('Nuevo pedido')");
+    
+    // Commit all changes
+    if ($conexion->commit()) {
+        echo "Pedido procesado exitosamente";
+    } else {
+        throw new Exception("Error al confirmar transacción");
+    }
+    
+} catch (Exception $e) {
+    // Rollback on error
+    $conexion->rollBack();
+    echo "Error: " . $e->getMessage();
+}
+```
+
+### Complex Query with Multiple Bindings
+
+```php
+$conexion = new Conexion();
+
+$conexion->query("
+    SELECT p.*, c.nombre as categoria_nombre
+    FROM productos p
+    JOIN categorias c ON p.categoria_id = c.id
+    WHERE p.precio BETWEEN :precio_min AND :precio_max
+    AND p.activo = :activo
+    ORDER BY p.nombre
+");
+
+$conexion->bind(':precio_min', 10.00);
+$conexion->bind(':precio_max', 100.00);
+$conexion->bind(':activo', true);
+
+$productos = $conexion->getObjects();
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Always Use Prepared Statements" icon="shield">
+    Never concatenate user input directly into SQL queries
+  </Card>
+  <Card title="Check for Errors" icon="triangle-exclamation">
+    Always check `execute()` return value and `getError()`
+  </Card>
+  <Card title="Use Transactions" icon="rotate">
+    Wrap related operations in transactions for data integrity
+  </Card>
+  <Card title="Close Connections" icon="xmark">
+    Let PHP garbage collection handle connection cleanup
+  </Card>
+</CardGroup>
+
+## Configuration
+
+Database credentials are defined in your configuration file:
+
+```php
+// Config/config.php
+define('HOST', 'localhost');
+define('USERNAME', 'root');
+define('PASSWORD', 'your_password');
+define('DATABASE', 'your_database');
+define('SSL_CA', null); // Or path to SSL certificate
+```
+
+## See Also
+
+- [Model](/api/model) - Using Conexion in models
+- [Database Guide](/database) - Database best practices
+- [Configuration](/configuration) - Setting up database credentials

@@ -1,0 +1,538 @@
+---
+title: Controllers
+description: Building controllers to handle application logic in SwiftFusePHP
+---
+
+## Overview
+
+Controllers are the central coordination point in SwiftFusePHP's MVC architecture. They receive user requests, interact with models for data operations, and render views or return JSON responses.
+
+## Base Controller Class
+
+All controllers extend the `Controlador` abstract class (Libreria/Controlador.php:10), which provides essential methods for:
+
+- Loading views
+- Loading models
+- Returning JSON responses
+- Managing the response structure
+
+## Creating a Controller
+
+### File Structure
+
+Controllers must follow specific naming conventions:
+
+<CodeGroup>
+```php File: Controlador/Person_Controller.php
+<?php
+
+class PersonControl extends Controlador
+{
+    protected $folder = "person";
+    
+    // Your methods here
+}
+```
+</CodeGroup>
+
+<Note>
+**Naming Convention:**
+- File name: `{Name}_Controller.php` (e.g., `Person_Controller.php`)
+- Class name: `{Name}Control` (e.g., `PersonControl`)
+- The file must be in the `Controlador/` directory
+</Note>
+
+### The $folder Property
+
+Every controller should define a `$folder` property that specifies where its views are located:
+
+<CodeGroup>
+```php Inicio_Controller.php (Lines 6-9)
+class InicioControl extends Controlador
+{
+    protected $folder = "inicio";
+}
+```
+</CodeGroup>
+
+This tells the controller to look for views in `Vista/inicio/`.
+
+## Controller Methods
+
+The base `Controlador` class provides four essential methods:
+
+### 1. cargaVista($archivo, $data)
+
+The default method called when no specific method is found in the URL.
+
+<CodeGroup>
+```php Controlador.php (Lines 23-29)
+public function cargaVista($archivo, $data){
+    if(count($data) == 0 ){
+        $this->vista($this->folder . '/' . lcfirst($archivo), $data);
+    }else{
+        error(404);
+    }
+}
+```
+</CodeGroup>
+
+<ParamField path="$archivo" type="string">
+  The view file name (without extension)
+</ParamField>
+
+<ParamField path="$data" type="array">
+  URL parameters (must be empty for simple view loading)
+</ParamField>
+
+**Example Usage:**
+```
+URL: http://example.com/inicio/contact
+
+Calls: InicioControl->cargaVista("contact", [])
+Loads: Vista/inicio/contact_View.php
+```
+
+<Tip>
+You can override `cargaVista()` in your controller to customize default view loading behavior.
+</Tip>
+
+### 2. vista($vista, $parametro = [])
+
+Loads and renders a view file.
+
+<CodeGroup>
+```php Controlador.php (Lines 55-69)
+public function vista($vista, $parametro = [])
+{
+    $vista = lcfirst($vista);
+    $extensions = array("html", "php");
+    $isExist = false;
+    foreach ($extensions as $extension) {
+        $file = "Vista/" . $vista . "_View." . $extension;
+        if (file_exists($file)) {
+            $isExist = true;
+            require_once $file;
+            break;
+        }
+    }
+    ($isExist ?: error(404));
+}
+```
+</CodeGroup>
+
+<ParamField path="$vista" type="string" required>
+  Path to the view file (relative to Vista/ directory, without extension)
+</ParamField>
+
+<ParamField path="$parametro" type="array" default="[]">
+  Data to pass to the view (accessible as variables)
+</ParamField>
+
+**Features:**
+- Automatically checks for both `.html` and `.php` extensions
+- Triggers 404 error if view doesn't exist
+- Converts view name to lowercase
+
+<CodeGroup>
+```php Usage Example
+public function dashboard($vista, $parametros)
+{
+    $data = [
+        'username' => 'John Doe',
+        'role' => 'Admin'
+    ];
+    
+    $this->vista('admin/dashboard', $data);
+}
+```
+
+```php In View: Vista/admin/dashboard_View.php
+<h1>Welcome, <?php echo $username; ?>!</h1>
+<p>Role: <?php echo $role; ?></p>
+```
+</CodeGroup>
+
+### 3. modelo($modelo)
+
+Loads and instantiates a model.
+
+<CodeGroup>
+```php Controlador.php (Lines 38-44)
+public function modelo($modelo)
+{
+    require_once "Modelo/" . $modelo . "_Model.php";
+    $modelo = explode("/", $modelo);
+    $modelo = $modelo[count($modelo)-1] . "Mode";
+    return new $modelo;
+}
+```
+</CodeGroup>
+
+<ParamField path="$modelo" type="string" required>
+  The model name (without _Model.php suffix)
+</ParamField>
+
+**Returns:** An instance of the model class
+
+<CodeGroup>
+```php Usage Example
+class PersonControl extends Controlador
+{
+    private $Person;
+    
+    public function __construct()
+    {
+        // Load the Person model
+        $this->Person = $this->modelo("Person");
+    }
+    
+    public function list()
+    {
+        // Use the model
+        $data = $this->Person->getAll();
+        $this->retorno["data"] = $data;
+        $this->retornar();
+    }
+}
+```
+</CodeGroup>
+
+<Note>
+The model name is automatically appended with "Mode" (e.g., "Person" becomes "PersonMode")
+</Note>
+
+### 4. retornar()
+
+Returns a JSON response and terminates execution.
+
+<CodeGroup>
+```php Controlador.php (Lines 76-80)
+protected function retornar()
+{
+    echo json_encode($this->retorno);
+    die();
+}
+```
+</CodeGroup>
+
+This method outputs the `$retorno` array as JSON. The array has a predefined structure:
+
+<CodeGroup>
+```php Controlador.php (Line 12)
+protected $retorno = array(
+    "mensaje" => null,
+    "exito" => false,
+    "data" => null
+);
+```
+</CodeGroup>
+
+<ParamField path="mensaje" type="string|null">
+  Error or success message
+</ParamField>
+
+<ParamField path="exito" type="boolean" default="false">
+  Whether the operation succeeded
+</ParamField>
+
+<ParamField path="data" type="mixed|null">
+  Response data (arrays, objects, etc.)
+</ParamField>
+
+## Complete Controller Examples
+
+### Example 1: Simple View Controller
+
+<CodeGroup>
+```php Inicio_Controller.php
+<?php
+
+class InicioControl extends Controlador
+{
+    protected $folder = "inicio";
+}
+```
+</CodeGroup>
+
+This minimal controller:
+- Uses the default `cargaVista()` method
+- Loads views from `Vista/inicio/`
+- Handles URLs like `/inicio/index`, `/inicio/contact`, etc.
+
+### Example 2: API Controller with Model
+
+<CodeGroup>
+```php Person_Controller.php (Lines 1-23)
+<?php
+
+class PersonControl extends Controlador
+{
+    private $Person;
+
+    public function __construct()
+    {
+        $this->Person = $this->modelo("Person");
+    }
+
+    public function list(){
+        $data = $this->Person->getAll();
+        if(count($data) > 0){
+            $this->retorno["exito"] = true;
+            $this->retorno["data"] = $data;
+        }else{
+            $this->retorno["mensaje"] = $this->Person->getMensaje();
+        }
+        $this->retornar();
+    }
+}
+```
+</CodeGroup>
+
+**URL:** `http://example.com/person/list`
+
+**Response:**
+```json
+{
+  "mensaje": null,
+  "exito": true,
+  "data": [
+    {"id": 1, "name": "John Doe"},
+    {"id": 2, "name": "Jane Smith"}
+  ]
+}
+```
+
+### Example 3: Controller with Parameters
+
+<CodeGroup>
+```php User_Controller.php
+<?php
+
+class UserControl extends Controlador
+{
+    protected $folder = "user";
+    private $User;
+
+    public function __construct()
+    {
+        $this->User = $this->modelo("User");
+    }
+
+    public function profile($vista, $parametros)
+    {
+        // URL: /user/profile/42
+        if (count($parametros) > 0) {
+            $userId = $parametros[0];
+            $userData = $this->User->getById($userId);
+            
+            if ($userData) {
+                $this->vista('user/profile', $userData);
+            } else {
+                error(404);
+            }
+        } else {
+            error(404);
+        }
+    }
+    
+    public function update($vista, $parametros)
+    {
+        // URL: /user/update/42
+        $userId = $parametros[0] ?? null;
+        
+        if (!$userId) {
+            $this->retorno["mensaje"] = "User ID required";
+            $this->retornar();
+        }
+        
+        // Get POST data
+        $name = $_POST['name'] ?? '';
+        $email = $_POST['email'] ?? '';
+        
+        $success = $this->User->update($userId, $name, $email);
+        
+        if ($success) {
+            $this->retorno["exito"] = true;
+            $this->retorno["mensaje"] = "User updated successfully";
+        } else {
+            $this->retorno["mensaje"] = $this->User->getMensaje();
+        }
+        
+        $this->retornar();
+    }
+}
+```
+</CodeGroup>
+
+## Working with Forms
+
+Controllers can process form data using PHP superglobals:
+
+<CodeGroup>
+```php Processing POST Data
+public function create($vista, $parametros)
+{
+    // Validate POST data
+    $name = $_POST['name'] ?? '';
+    $email = $_POST['email'] ?? '';
+    
+    if (empty($name) || empty($email)) {
+        $this->retorno["mensaje"] = "All fields required";
+        $this->retornar();
+    }
+    
+    // Create via model
+    $id = $this->Person->create($name, $email);
+    
+    if ($id) {
+        $this->retorno["exito"] = true;
+        $this->retorno["data"] = ["id" => $id];
+        $this->retorno["mensaje"] = "Person created";
+    } else {
+        $this->retorno["mensaje"] = $this->Person->getMensaje();
+    }
+    
+    $this->retornar();
+}
+```
+</CodeGroup>
+
+## AJAX Requests
+
+Controllers work seamlessly with AJAX:
+
+<Tabs>
+  <Tab title="Controller">
+    ```php
+    public function search($vista, $parametros)
+    {
+        $query = $_POST['query'] ?? '';
+        
+        if (strlen($query) < 3) {
+            $this->retorno["mensaje"] = "Query too short";
+            $this->retornar();
+        }
+        
+        $results = $this->Person->search($query);
+        
+        $this->retorno["exito"] = true;
+        $this->retorno["data"] = $results;
+        $this->retornar();
+    }
+    ```
+  </Tab>
+  
+  <Tab title="JavaScript">
+    ```javascript
+    async function search(query) {
+        const response = await fetch('/person/search', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `query=${encodeURIComponent(query)}`
+        });
+        
+        const data = await response.json();
+        
+        if (data.exito) {
+            displayResults(data.data);
+        } else {
+            alert(data.mensaje);
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Error Handling
+
+<CodeGroup>
+```php Error Handling Pattern
+public function delete($vista, $parametros)
+{
+    $id = $parametros[0] ?? null;
+    
+    if (!$id) {
+        $this->retorno["mensaje"] = "ID required";
+        $this->retornar();
+    }
+    
+    try {
+        $success = $this->Person->delete($id);
+        
+        if ($success) {
+            $this->retorno["exito"] = true;
+            $this->retorno["mensaje"] = "Deleted successfully";
+        } else {
+            $this->retorno["mensaje"] = $this->Person->getMensaje();
+        }
+    } catch (Exception $e) {
+        $this->retorno["mensaje"] = "An error occurred";
+    }
+    
+    $this->retornar();
+}
+```
+</CodeGroup>
+
+## Best Practices
+
+<Tip>
+**Keep Controllers Thin**
+
+Business logic should be in models, not controllers. Controllers should only:
+- Validate input
+- Call model methods
+- Format responses
+</Tip>
+
+<Tip>
+**Use Constructors for Common Setup**
+
+Load models and perform authentication in `__construct()`:
+
+```php
+public function __construct()
+{
+    $this->Person = $this->modelo("Person");
+    $this->checkAuthentication();
+}
+```
+</Tip>
+
+<Warning>
+**Always Validate Input**
+
+Never trust user input from URLs, POST data, or cookies:
+
+```php
+$id = filter_var($parametros[0], FILTER_VALIDATE_INT);
+if (!$id) {
+    error(404);
+}
+```
+</Warning>
+
+<Tip>
+**Consistent Response Format**
+
+Always use the `$retorno` structure for JSON responses:
+
+```php
+$this->retorno["exito"] = true;
+$this->retorno["mensaje"] = "Success";
+$this->retorno["data"] = $data;
+$this->retornar();
+```
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Models" icon="database" href="/models">
+    Learn how to create models for database operations
+  </Card>
+  <Card title="Views" icon="eye" href="/views">
+    Create views to display your data
+  </Card>
+</CardGroup>

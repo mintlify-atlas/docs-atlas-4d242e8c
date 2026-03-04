@@ -1,0 +1,535 @@
+---
+title: Error Handling and Logging
+description: Learn how to handle errors and implement logging in SwiftFusePHP
+---
+
+SwiftFusePHP includes a comprehensive error handling system that logs errors automatically and provides customizable error pages.
+
+## Error Handling System
+
+The error handling system is configured in `Errores/log.php` and activated automatically when the framework initializes.
+
+### Configuration
+
+```php
+// Error level constants
+define('E_FATAL',  E_ERROR | E_USER_ERROR | E_PARSE | E_CORE_ERROR | 
+        E_COMPILE_ERROR | E_RECOVERABLE_ERROR);
+
+// Environment (dev, staging, prod)
+define('ENV', 'dev');
+
+// Display errors in browser (disable in production)
+define('DISPLAY_ERRORS', TRUE);
+
+// Error reporting level
+define('ERROR_REPORTING', E_ALL | E_STRICT);
+
+// Enable error logging
+define('LOG_ERRORS', TRUE);
+```
+
+<Warning>
+**Production Settings:**
+
+In production environments, always set:
+```php
+define('DISPLAY_ERRORS', FALSE);
+define('ENV', 'prod');
+```
+
+This prevents sensitive error details from being exposed to users.
+</Warning>
+
+### Initialization
+
+The error handler is registered automatically:
+
+```php
+register_shutdown_function('shut');
+set_error_handler('handler');
+```
+
+## Error Handler Function
+
+### handler()
+
+The main error handling function processes all PHP errors.
+
+<ParamField path="errno" type="int" required>
+  Error level (e.g., E_ERROR, E_WARNING)
+</ParamField>
+
+<ParamField path="errstr" type="string" required>
+  Error message
+</ParamField>
+
+<ParamField path="errfile" type="string" required>
+  File where error occurred
+</ParamField>
+
+<ParamField path="errline" type="int" required>
+  Line number where error occurred
+</ParamField>
+
+### Manual Error Triggering
+
+```php
+// Trigger a custom error
+handler(E_ERROR, "Database connection failed", __FILE__, __LINE__);
+
+// Warning
+handler(E_WARNING, "Deprecated function used", __FILE__, __LINE__);
+
+// Notice
+handler(E_NOTICE, "Variable undefined", __FILE__, __LINE__);
+```
+
+### Error Type Classification
+
+The handler recognizes all PHP error types:
+
+<CodeGroup>
+```php Fatal Errors
+E_ERROR          // 1 - Fatal runtime errors
+E_PARSE          // 4 - Parse errors
+E_CORE_ERROR     // 16 - PHP core errors
+E_COMPILE_ERROR  // 64 - Compile-time errors
+E_USER_ERROR     // 256 - User-generated errors
+E_RECOVERABLE_ERROR // 4096 - Catchable fatal errors
+```
+
+```php Warnings
+E_WARNING        // 2 - Runtime warnings
+E_CORE_WARNING   // 32 - PHP core warnings
+E_COMPILE_WARNING // 128 - Compile warnings
+E_USER_WARNING   // 512 - User warnings
+```
+
+```php Notices
+E_NOTICE         // 8 - Runtime notices
+E_USER_NOTICE    // 1024 - User notices
+E_STRICT         // 2048 - Code suggestions
+E_DEPRECATED     // 8192 - Deprecated features
+E_USER_DEPRECATED // 16384 - User deprecation
+```
+</CodeGroup>
+
+## Error Logging
+
+### Log File Location
+
+Errors are logged to:
+```
+Errores/error.log
+```
+
+### Log Format
+
+```
+[2024-03-15 02:30:45] [E_ERROR: Division by zero] [IN FILE /var/www/app/Controller.php] [LINE 42]
+[2024-03-15 02:31:12] [E_WARNING: Undefined variable] [IN FILE /var/www/app/Model.php] [LINE 156]
+[2024-03-15 02:32:08] [E_NOTICE: Trying to access array offset] [IN FILE /var/www/app/Helper.php] [LINE 89]
+```
+
+### Log Entry Components
+
+1. **Timestamp** - `[YYYY-MM-DD HH:MM:SS]`
+2. **Error Type** - `[E_ERROR: Error message]`
+3. **File Path** - `[IN FILE /path/to/file.php]`
+4. **Line Number** - `[LINE 123]`
+
+### Implementation
+
+```php
+if (LOG_ERRORS) {
+    $report = "[" . date("Y-m-d h:i:s") . "]".
+              " [$typestr: $errstr]".
+              " [IN FILE $errfile]".
+              " [LINE $errline]\n";
+    
+    error_log($report, 3, RUTA_APP . "Errores/error.log");
+}
+```
+
+## Shutdown Handler
+
+### shut()
+
+Captures fatal errors that occur during script shutdown.
+
+```php
+function shut() {
+    $error = error_get_last();
+    if ($error && ($error['type'] & E_FATAL)) {
+        handler($error['type'], $error['message'], 
+                $error['file'], $error['line']);
+    }
+}
+```
+
+This ensures that even fatal errors are logged before the script terminates.
+
+## Error Context Display
+
+When errors occur, the handler extracts the relevant line of code:
+
+```php
+$myFile = $errfile;
+$lines = file($myFile);
+$content = null;
+
+$x = 1;
+foreach($lines as $value) {
+    if ($x == $errline) {
+        $content = htmlspecialchars("Line " . $x . ": " . $value);
+    }
+    $x++;
+}
+```
+
+This provides context for debugging by showing the exact line where the error occurred.
+
+## Custom Error Pages
+
+### Error Views
+
+SwiftFusePHP includes built-in error pages:
+
+- **400** - Bad Request (`Vista/error/400_View.php`)
+- **403** - Forbidden (`Vista/error/403_View.php`)
+- **404** - Not Found (`Vista/error/404_View.php`)
+- **501** - Under Development (`Vista/error/501_View.php`)
+- **503** - Maintenance (`Vista/error/503_View.php`)
+
+### Triggering Error Pages
+
+```php
+// In controllers or models
+error(404); // Not Found
+error(403); // Forbidden
+error(400); // Bad Request
+error(503); // Maintenance
+error(501); // Under Development
+```
+
+### error() Function
+
+<ParamField path="code" type="int" required>
+  HTTP error code
+</ParamField>
+
+<ParamField path="isRedirect" type="bool" default="true">
+  If `true`, redirects to error page. If `false`, includes the view directly.
+</ParamField>
+
+```php
+function error($code, $isRedirect = true)
+{
+    $auxUrl = ERROR404;
+    
+    switch ($code) {
+        case 404:
+            $auxUrl = ERROR404;
+            break;
+        case 400:
+            $auxUrl = ERROR400;
+            break;
+        case 403:
+            $auxUrl = ERROR403;
+            break;
+        case 503:
+            $auxUrl = MANTENIMIENTO;
+            break;
+        case 501:
+            $auxUrl = DESARROLLO;
+            break;
+        default:
+            $auxUrl = ERROR404;
+            break;
+    }
+    
+    setStatusCode($code);
+    
+    if ($isRedirect) {
+        header("location: " . $auxUrl);
+    } else {
+        require_once RUTA_APP . "Vista/error/{$code}_View.php";
+    }
+    
+    die();
+}
+```
+
+## Database Error Handling
+
+### Connection Errors
+
+```php
+public function __construct()
+{
+    try {
+        $this->dbh = new PDO($dsn, $this->usuario, $this->password, $opciones);
+    } catch (PDOException $ex) {
+        $this->error = $ex->getMessage();
+    }
+}
+
+// Check for connection errors
+if ($this->Conexion->getError() != null) {
+    handler(E_ERROR, $this->Conexion->getError(), __FILE__, __LINE__);
+}
+```
+
+### Query Errors
+
+```php
+public function getAll()
+{
+    $data = array();
+    try {
+        $this->Conexion->query("SELECT * FROM users");
+        $data = $this->Conexion->getsArray();
+    } catch(PDOException $ex) {
+        $this->mensaje = $ex->getMessage();
+        handler(E_ERROR, $ex->getMessage(), __FILE__, __LINE__);
+    }
+    return $data;
+}
+```
+
+### Transaction Error Handling
+
+```php
+public function transferFunds($fromId, $toId, $amount)
+{
+    try {
+        $this->Conexion->transaction();
+        
+        // Perform operations
+        $this->debit($fromId, $amount);
+        $this->credit($toId, $amount);
+        
+        if ($this->Conexion->commit()) {
+            return true;
+        }
+    } catch (PDOException $ex) {
+        $this->Conexion->rollBack();
+        handler(E_ERROR, $ex->getMessage(), __FILE__, __LINE__);
+        return false;
+    }
+}
+```
+
+## File Upload Error Handling
+
+### saveImg() Errors
+
+```php
+$savedFiles = saveImg($_FILES["image"], "Public/Uploads/");
+
+if ($savedFiles === false) {
+    // Error occurred during upload
+    handler(E_ERROR, "Failed to save image", __FILE__, __LINE__);
+} else {
+    // Success
+    $filename = $savedFiles[0];
+}
+```
+
+### Image Type Errors
+
+```php
+// Inside saveImg() function
+$infoImagen = getimagesize($tmpImagen);
+if ($infoImagen === false) {
+    handler(E_ERROR, "No se pudo detectar el tipo de imagen.", __FILE__, __LINE__);
+    $nombreImagenes = false;
+    return;
+}
+
+// Unsupported image type
+default:
+    handler(E_ERROR, "Tipo de imagen no soportado.", __FILE__, __LINE__);
+    $nombreImagenes = false;
+    return;
+```
+
+## Error Response in Controllers
+
+### JSON Error Responses
+
+```php
+class UserControl extends Controlador
+{
+    public function create()
+    {
+        try {
+            $name = filterINPUT($_POST['name']);
+            $email = filterINPUT($_POST['email']);
+            
+            if (!isEmail($email)) {
+                $this->retorno["mensaje"] = "Invalid email format";
+                $this->retornar();
+            }
+            
+            $userId = $this->User->create($name, $email);
+            
+            if ($userId) {
+                $this->retorno["exito"] = true;
+                $this->retorno["data"] = ["id" => $userId];
+            } else {
+                $this->retorno["mensaje"] = $this->User->getMensaje();
+            }
+        } catch (Exception $ex) {
+            $this->retorno["mensaje"] = "An error occurred";
+            handler(E_ERROR, $ex->getMessage(), __FILE__, __LINE__);
+        }
+        
+        $this->retornar();
+    }
+}
+```
+
+## Reading Error Logs
+
+### Command Line
+
+```bash
+# View last 50 errors
+tail -n 50 Errores/error.log
+
+# Watch errors in real-time
+tail -f Errores/error.log
+
+# Search for specific errors
+grep "E_ERROR" Errores/error.log
+
+# Count errors by type
+grep -o "E_[A-Z_]*" Errores/error.log | sort | uniq -c
+```
+
+### Log Rotation
+
+Implement log rotation to prevent the error log from growing too large:
+
+```bash
+# Create logrotate config
+sudo nano /etc/logrotate.d/swiftfusephp
+```
+
+```
+/var/www/app/Errores/error.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    notifempty
+    missingok
+    create 0644 www-data www-data
+}
+```
+
+## Error Monitoring
+
+### Custom Error Notifications
+
+```php
+function handler($errno, $errstr, $errfile, $errline)
+{
+    // ... existing code ...
+    
+    // Send email notification for critical errors
+    if ($errno & E_FATAL) {
+        $subject = "Critical Error on " . NOMBRESITIO;
+        $message = "Error: $errstr\nFile: $errfile\nLine: $errline";
+        mail(EMAIL, $subject, $message);
+    }
+    
+    // ... rest of code ...
+}
+```
+
+### Slack Integration
+
+```php
+function notifySlack($error)
+{
+    $webhook = 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL';
+    
+    $data = json_encode([
+        'text' => "Error: {$error['message']}",
+        'attachments' => [[
+            'color' => 'danger',
+            'fields' => [
+                ['title' => 'File', 'value' => $error['file'], 'short' => true],
+                ['title' => 'Line', 'value' => $error['line'], 'short' => true],
+            ]
+        ]]
+    ]);
+    
+    $ch = curl_init($webhook);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_exec($ch);
+    curl_close($ch);
+}
+```
+
+## Best Practices
+
+<Note>
+**Error Handling Guidelines:**
+
+1. **Log everything** - Enable `LOG_ERRORS` in all environments
+2. **Hide details in production** - Set `DISPLAY_ERRORS` to `FALSE`
+3. **Use try-catch blocks** - Wrap database operations and external calls
+4. **Provide user-friendly messages** - Don't expose technical details to users
+5. **Monitor logs regularly** - Set up automated monitoring
+6. **Implement log rotation** - Prevent disk space issues
+7. **Use appropriate error levels** - E_ERROR for fatal, E_WARNING for recoverable
+8. **Handle database errors** - Check for connection and query errors
+9. **Validate file uploads** - Handle upload errors gracefully
+10. **Test error pages** - Ensure custom error pages work correctly
+</Note>
+
+## Environment-Specific Configuration
+
+### Development
+
+```php
+define('ENV', 'dev');
+define('DISPLAY_ERRORS', TRUE);
+define('ERROR_REPORTING', E_ALL | E_STRICT);
+define('LOG_ERRORS', TRUE);
+```
+
+### Staging
+
+```php
+define('ENV', 'staging');
+define('DISPLAY_ERRORS', FALSE);
+define('ERROR_REPORTING', E_ALL);
+define('LOG_ERRORS', TRUE);
+```
+
+### Production
+
+```php
+define('ENV', 'prod');
+define('DISPLAY_ERRORS', FALSE);
+define('ERROR_REPORTING', E_ALL & ~E_NOTICE & ~E_STRICT & ~E_DEPRECATED);
+define('LOG_ERRORS', TRUE);
+```
+
+## Debugging Tips
+
+1. **Check the log file first** - `Errores/error.log` contains detailed error info
+2. **Enable display errors in development** - See errors immediately in browser
+3. **Use var_dump() and print_r()** - Inspect variable contents
+4. **Check database errors** - Use `getError()` on the connection object
+5. **Test error pages** - Navigate to `/Error/404`, `/Error/403`, etc.
+6. **Monitor file permissions** - Ensure log file is writable
+7. **Check PHP error_log** - System-level errors may appear here
+8. **Use xdebug or similar tools** - For advanced debugging

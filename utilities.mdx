@@ -1,0 +1,626 @@
+---
+title: Utility Functions
+description: Explore the helper functions available in SwiftFusePHP
+---
+
+SwiftFusePHP provides a comprehensive set of utility functions to simplify common tasks. These functions are located in `Config/configurar.php`.
+
+## Date and Time Utilities
+
+### getDateInSpanish()
+
+Formats dates in Spanish locale.
+
+<ParamField path="date" type="string" default="'now'">
+  Date string or 'now' for current date
+</ParamField>
+
+**Returns:** `string` - Formatted date in Spanish
+
+```php
+// Current date
+echo getDateInSpanish(); // "15 de marzo de 2024"
+
+// Specific date
+echo getDateInSpanish('2024-12-25'); // "25 de diciembre de 2024"
+
+// With time
+echo getDateInSpanish('2024-06-15 14:30:00'); // "15 de junio de 2024"
+```
+
+### Implementation
+
+```php
+function getDateInSpanish($date = 'now')
+{
+    $dateTimeObj = new DateTime($date, new DateTimeZone(date_default_timezone_get()));
+    $dateFormatted = IntlDateFormatter::formatObject(
+        $dateTimeObj,
+        "d 'de' MMMM 'de' y",
+        'es_ES'
+    );
+    return $dateFormatted;
+}
+```
+
+<Note>
+Requires the PHP `intl` extension to be enabled.
+</Note>
+
+### getMonthInSpanish()
+
+Returns the Spanish name of a month by index.
+
+<ParamField path="index" type="int" required>
+  Month index (0-11)
+</ParamField>
+
+**Returns:** `string` - Month name in Spanish
+
+```php
+echo getMonthInSpanish(0);  // "Enero"
+echo getMonthInSpanish(5);  // "Junio"
+echo getMonthInSpanish(11); // "Diciembre"
+
+// Use with date functions
+$monthIndex = date('n') - 1; // Get current month (0-based)
+echo getMonthInSpanish($monthIndex);
+```
+
+## Number and Currency Formatting
+
+### formatCurrency()
+
+Formats numbers as currency strings.
+
+<ParamField path="number" type="int" required>
+  The number to format
+</ParamField>
+
+<ParamField path="icon" type="string" default="'💲'">
+  Currency symbol or icon
+</ParamField>
+
+**Returns:** `string` - Formatted currency string
+
+```php
+echo formatCurrency(1234567); // "💲 1.234.567"
+echo formatCurrency(1000);    // "💲 1.000"
+
+// Custom currency symbols
+echo formatCurrency(1234567, "$");   // "$ 1.234.567"
+echo formatCurrency(1234567, "€");   // "€ 1.234.567"
+echo formatCurrency(1234567, "COP"); // "COP 1.234.567"
+```
+
+### Implementation
+
+```php
+function formatCurrency($number, $icon = "💲")
+{
+    return "{$icon} " . number_format($number, 0, ",", ".");
+}
+```
+
+### nullToZero()
+
+Converts null values to zero.
+
+<ParamField path="value" type="int|null" required>
+  The value to check
+</ParamField>
+
+**Returns:** `int` - The value or 0 if null
+
+```php
+echo nullToZero(null); // 0
+echo nullToZero(42);   // 42
+echo nullToZero(0);    // 0
+
+// Useful in calculations
+$total = nullToZero($price) + nullToZero($tax);
+
+// Prevent null errors
+$quantity = nullToZero($_POST['quantity'] ?? null);
+```
+
+## String Utilities
+
+### stringWithQuotationMark()
+
+Adds quotes to strings for SQL queries (legacy function).
+
+<ParamField path="string" type="string|null" required>
+  The string to quote
+</ParamField>
+
+**Returns:** `string` - Quoted string or "null"
+
+```php
+echo stringWithQuotationMark("John");  // "'John'"
+echo stringWithQuotationMark(null);    // "null"
+echo stringWithQuotationMark("null");  // "null"
+echo stringWithQuotationMark("O'Neil"); // "'O\'Neil'"
+```
+
+<Warning>
+**Deprecated Usage:**
+
+This function is primarily for legacy compatibility. For modern applications, use prepared statements with parameter binding instead:
+
+```php
+// DON'T do this
+$query = "INSERT INTO users (name) VALUES (" . stringWithQuotationMark($name) . ")";
+
+// DO this instead
+$this->Conexion->query("INSERT INTO users (name) VALUES (:name)");
+$this->Conexion->bind(':name', $name);
+```
+</Warning>
+
+## Directory and File Utilities
+
+### mkdirs()
+
+Creates nested directories recursively.
+
+<ParamField path="relativePath" type="string" required>
+  Relative path of directories to create
+</ParamField>
+
+```php
+// Create single directory
+mkdirs("Public/Uploads");
+
+// Create nested directories
+mkdirs("Public/Uploads/Images/2024/March");
+
+// Used automatically by saveImg() and saveFile()
+$saved = saveImg($_FILES["img"], "Public/Uploads/New/Folder/");
+// Directories are created automatically
+```
+
+### Implementation
+
+```php
+function mkdirs($relativePath)
+{
+    $folders = explode("/", $relativePath);
+    $path = RUTA_APP;
+    
+    foreach ($folders as $folder) {
+        $path .= $folder . "/";
+        if (!is_dir($path)) mkdir($path);
+    }
+}
+```
+
+### rmdir_r()
+
+Removes a directory and all its contents recursively.
+
+<ParamField path="relativePath" type="string" required>
+  Relative path of directory to remove
+</ParamField>
+
+```php
+// Remove directory and all contents
+rmdir_r("Public/Temp");
+
+// Remove user uploads
+rmdir_r("Public/Uploads/User123");
+
+// Clean cache directory
+rmdir_r("Cache/Old");
+```
+
+<Warning>
+**Destructive Operation:**
+
+This function permanently deletes directories and all their contents. Use with caution and always verify the path before calling.
+
+```php
+// Good practice: Check before deleting
+$path = "Public/Uploads/{$userId}";
+if (file_exists(RUTA_APP . $path)) {
+    rmdir_r($path);
+}
+```
+</Warning>
+
+### Implementation
+
+```php
+function rmdir_r($relativePath)
+{
+    $folder = RUTA_APP . $relativePath;
+    
+    if (!is_dir($folder)) {
+        handler(E_ERROR, "The folder {$folder} does not exist.", __FILE__, __LINE__);
+        return;
+    }
+    
+    $it = new RecursiveDirectoryIterator($folder, RecursiveDirectoryIterator::SKIP_DOTS);
+    $files = new RecursiveIteratorIterator(
+        $it,
+        RecursiveIteratorIterator::CHILD_FIRST
+    );
+    
+    foreach ($files as $file) {
+        if ($file->isDir()) {
+            rmdir($file->getRealPath());
+        } else {
+            unlink($file->getRealPath());
+        }
+    }
+    
+    rmdir($folder);
+}
+```
+
+## File Transfer Utilities
+
+### filesToCURLFiles()
+
+Converts `$_FILES` array to CURLFile objects for API requests.
+
+**Returns:** `array` - Array of CURLFile objects
+
+```php
+// Forward uploaded files to another API
+$curlFiles = filesToCURLFiles();
+
+$ch = curl_init('https://api.example.com/upload');
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, array_merge(
+    $_POST,
+    $curlFiles
+));
+$response = curl_exec($ch);
+curl_close($ch);
+```
+
+### Implementation
+
+```php
+function filesToCURLFiles()
+{
+    $files = array();
+    
+    foreach ($_FILES as $key => $file) {
+        if ($file['tmp_name'] !== "") {
+            $files[$key] = new CURLFile(
+                $file['tmp_name'],
+                $file['type'],
+                $file['name']
+            );
+        }
+    }
+    
+    return $files;
+}
+```
+
+### Use Cases
+
+<CodeGroup>
+```php Microservices
+// Forward to image processing service
+function processImage() {
+    $files = filesToCURLFiles();
+    
+    $ch = curl_init('https://image-service.internal/process');
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, [
+        'action' => 'optimize',
+        'quality' => 85,
+    ] + $files);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    
+    $result = curl_exec($ch);
+    curl_close($ch);
+    
+    return json_decode($result);
+}
+```
+
+```php Cloud Storage
+// Upload to cloud storage API
+function uploadToCloud() {
+    $files = filesToCURLFiles();
+    
+    $ch = curl_init('https://storage.cloud.com/upload');
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: Bearer ' . CLOUD_TOKEN
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $files);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    
+    return curl_exec($ch);
+}
+```
+</CodeGroup>
+
+## HTTP Utilities
+
+### setStatusCode()
+
+Sets HTTP response status code.
+
+<ParamField path="code" type="int" required>
+  HTTP status code (100-511)
+</ParamField>
+
+```php
+// Success responses
+setStatusCode(200); // OK
+setStatusCode(201); // Created
+setStatusCode(204); // No Content
+
+// Redirect responses
+setStatusCode(301); // Moved Permanently
+setStatusCode(302); // Found
+
+// Client error responses
+setStatusCode(400); // Bad Request
+setStatusCode(401); // Unauthorized
+setStatusCode(403); // Forbidden
+setStatusCode(404); // Not Found
+
+// Server error responses
+setStatusCode(500); // Internal Server Error
+setStatusCode(503); // Service Unavailable
+```
+
+### Common Usage Patterns
+
+<CodeGroup>
+```php API Response
+public function create() {
+    $user = $this->User->create($_POST);
+    
+    if ($user) {
+        setStatusCode(201); // Created
+        $this->retorno["exito"] = true;
+        $this->retorno["data"] = $user;
+    } else {
+        setStatusCode(400); // Bad Request
+        $this->retorno["mensaje"] = "Validation failed";
+    }
+    
+    $this->retornar();
+}
+```
+
+```php Not Found
+public function show($id) {
+    $user = $this->User->findById($id);
+    
+    if (!$user) {
+        setStatusCode(404);
+        $this->retorno["mensaje"] = "User not found";
+        $this->retornar();
+    }
+    
+    $this->retorno["exito"] = true;
+    $this->retorno["data"] = $user;
+    $this->retornar();
+}
+```
+
+```php Unauthorized
+public function delete($id) {
+    if (!$this->isAdmin()) {
+        setStatusCode(403);
+        $this->retorno["mensaje"] = "Forbidden";
+        $this->retornar();
+    }
+    
+    $this->User->delete($id);
+    setStatusCode(204); // No Content
+    $this->retornar();
+}
+```
+</CodeGroup>
+
+### Supported Status Codes
+
+The function supports all standard HTTP status codes:
+
+- **1xx:** Informational (100-103)
+- **2xx:** Success (200-226)
+- **3xx:** Redirection (300-308)
+- **4xx:** Client Error (400-451)
+- **5xx:** Server Error (500-511)
+
+## Configuration Utilities
+
+### is_ssl()
+
+Configures SSL/HTTPS settings and defines URL constants.
+
+<ParamField path="forceSSL" type="bool|null" required>
+  `true` for HTTPS, `false` for HTTP, `null` for auto-detect
+</ParamField>
+
+```php
+// Force HTTPS
+is_ssl(true);
+
+// Force HTTP (development)
+is_ssl(false);
+
+// Auto-detect (recommended)
+is_ssl(null);
+```
+
+### Defined Constants
+
+After calling `is_ssl()`, these constants are available:
+
+```php
+echo IS_SSL;        // true or false
+echo RUTA_URL;      // https://example.com/app/
+echo ERROR404;      // https://example.com/app/Error/404
+echo ERROR403;      // https://example.com/app/Error/403
+echo ERROR400;      // https://example.com/app/Error/400
+echo DESARROLLO;    // https://example.com/app/Error/desarrollo
+echo MANTENIMIENTO; // https://example.com/app/Error/mantenimiento
+```
+
+### suspend()
+
+Enables maintenance mode.
+
+<ParamField path="isForced" type="bool" default="true">
+  If `true`, only affects non-logged-in users. If `false`, affects everyone.
+</ParamField>
+
+```php
+// Maintenance mode for public users only
+suspend(true);
+
+// Full maintenance mode
+suspend(false);
+
+// Toggle suspension
+if (!isset($_SESSION['suspend'])) {
+    suspend();
+}
+```
+
+## Path Constants
+
+### RUTA_APP
+
+Absolute path to application root.
+
+```php
+echo RUTA_APP; // /var/www/html/myapp/
+
+// Load files
+require_once RUTA_APP . "Modelo/User_Model.php";
+
+// Save uploads
+$path = RUTA_APP . "Public/Uploads/image.jpg";
+
+// Read config
+$config = file_get_contents(RUTA_APP . "Config/app.json");
+```
+
+### RUTA_URL
+
+Base URL of the application.
+
+```php
+echo RUTA_URL; // https://example.com/app/
+
+// Generate links
+$profileUrl = RUTA_URL . "User/profile/{$userId}";
+$imageUrl = RUTA_URL . "Public/Uploads/image.jpg";
+$apiUrl = RUTA_URL . "api/users";
+```
+
+## Version Information
+
+### VERSION_SWIFTFUSEPHP
+
+Framework version.
+
+```php
+echo VERSION_SWIFTFUSEPHP; // "0.9.3"
+
+// Display in footer
+echo "Powered by SwiftFusePHP " . VERSION_SWIFTFUSEPHP;
+
+// Version checking
+if (version_compare(VERSION_SWIFTFUSEPHP, '1.0.0', '<')) {
+    echo "Running pre-release version";
+}
+```
+
+## Best Practices
+
+<Note>
+**Utility Function Guidelines:**
+
+1. **Use date functions for localization** - Consistent date formatting
+2. **Format currency appropriately** - Use `formatCurrency()` for display
+3. **Handle null values** - Use `nullToZero()` in calculations
+4. **Create directories safely** - Use `mkdirs()` instead of `mkdir()`
+5. **Set proper status codes** - Use `setStatusCode()` in API responses
+6. **Use constants for paths** - Never hard-code paths
+7. **Validate before deletion** - Check paths before `rmdir_r()`
+8. **Configure SSL properly** - Use `is_ssl()` in configuration
+9. **Handle maintenance mode** - Use `suspend()` for updates
+10. **Check framework version** - Use `VERSION_SWIFTFUSEPHP` for compatibility
+</Note>
+
+## Common Patterns
+
+### Date Display
+
+```php
+// Format dates consistently
+$created = getDateInSpanish($user->created_at);
+$updated = getDateInSpanish($user->updated_at);
+
+echo "Created: {$created}<br>";
+echo "Updated: {$updated}";
+```
+
+### Price Display
+
+```php
+// Format prices
+$price = formatCurrency($product->price, "$");
+$tax = formatCurrency($product->tax, "$");
+$total = formatCurrency($product->price + $product->tax, "$");
+
+echo "Price: {$price}<br>";
+echo "Tax: {$tax}<br>";
+echo "Total: {$total}";
+```
+
+### Safe File Operations
+
+```php
+// Create upload directory
+$uploadPath = "Public/Uploads/{$year}/{$month}";
+mkdirs($uploadPath);
+
+// Save file
+$saved = saveImg($_FILES['image'], $uploadPath);
+
+// Clean old files
+if (file_exists(RUTA_APP . "Public/Temp")) {
+    rmdir_r("Public/Temp");
+}
+```
+
+### API Response
+
+```php
+public function update($id) {
+    $user = $this->User->findById($id);
+    
+    if (!$user) {
+        setStatusCode(404);
+        $this->retorno["mensaje"] = "User not found";
+        $this->retornar();
+    }
+    
+    $updated = $this->User->update($id, $_POST);
+    
+    if ($updated) {
+        setStatusCode(200);
+        $this->retorno["exito"] = true;
+    } else {
+        setStatusCode(400);
+        $this->retorno["mensaje"] = "Update failed";
+    }
+    
+    $this->retornar();
+}
+```
